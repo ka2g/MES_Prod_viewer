@@ -1,0 +1,31 @@
+{
+  "_설명": "Windows 단일 exe 빌드 스펙 (Vercel pkg). 실제 옵션은 package.json 의 pkg 블록 + build:exe 스크립트 참고.",
+  "bundleTool": "pkg",
+  "buildCommand": "npm run build:exe",
+  "prerequisites": {
+    "os": "Windows x64 (빌드하는 PC)",
+    "node": ">=18 LTS — exe를 만드는 PC에만 설치. exe를 돌리는 현장 서버에는 Node 불필요"
+  },
+  "entryPoint": "./server.js",
+  "includedScripts": [
+    "./server.js",
+    "./mesRepository.js",
+    "./lineActivity.js"
+  ],
+  "includedAssets": ["./public/**/*"],
+  "pkgTarget": "node18-win-x64",
+  "output": {
+    "directory": "./dist",
+    "exePath": "./dist/mes-prod-viewer.exe"
+  },
+  "deployment": [
+    "dist/mes-prod-viewer.exe 복사",
+    "실행 폴더에 .env 배치(MSSQL_*, PORT=5000 등). dotenv 규칙",
+    "접속: http://(서버IP):(PORT) — HOST=0.0.0.0 권장",
+    "방화벽 해당 TCP 포트 허용"
+  ],
+  "buildWarnings": [
+    "Cannot include ... xdg-open — Linux용 보조파일이라 Windows 현장 단독 배포는 무시 가능",
+    "open 패키지 import.meta 관련 bytecode 경고는 mssql→azure 등 의존성에서 나올 수 있음. exe 자체 생성에는 지장 없었음이 일반적"
+  ]
+}

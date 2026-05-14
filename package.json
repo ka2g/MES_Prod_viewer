@@ -1,0 +1,38 @@
+{
+  "name": "mes-prod-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KH_MES 생산라인 모니터링 시스템 (Node)",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build:exe": "pkg . -t node18-win-x64 --out-path dist"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mssql": "^11.0.1"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "scripts": [
+      "server.js",
+      "mesRepository.js",
+      "lineActivity.js"
+    ],
+    "assets": [
+      "public/**/*",
+      "images/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
+  }
+}

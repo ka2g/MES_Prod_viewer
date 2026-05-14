@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>생산라인 모니터링 시스템</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <img
+            class="brand-icon"
+            src="/images/header_logo.png"
+            alt=""
+            decoding="async"
+          />
+          <span class="brand-title">생산라인 모니터링 시스템</span>
+          <div class="phase-toggle" role="tablist" aria-label="공정 선택">
+            <button type="button" class="phase-btn phase-btn--active" id="phaseSmt" data-phase="smt" role="tab" aria-selected="true">
+              SMT
+            </button>
+            <button type="button" class="phase-btn" id="phaseAssy" data-phase="assy" role="tab" aria-selected="false">
+              ASSY
+            </button>
+          </div>
+        </div>
+        <div class="topbar-meta">
+          <span id="connPill" class="pill pill--live">
+            <span class="dot dot--green"></span>
+            실시간 연동
+          </span>
+          <span id="clockLabel" class="clock">–</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <div id="alertBar" class="alert hidden"></div>
+
+      <div id="lineList" class="line-list" aria-live="polite"></div>
+
+      <div
+        id="hiddenLinesBar"
+        class="hidden-lines-bar hidden"
+        aria-label="숨긴 라인"
+      ></div>
+
+      <p id="emptyState" class="empty hidden"></p>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
