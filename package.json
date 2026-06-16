@@ -25,7 +25,8 @@
     "scripts": [
       "server.js",
       "mesRepository.js",
-      "lineActivity.js"
+      "lineActivity.js",
+      "envStore.js"
     ],
     "assets": [
       "public/**/*",

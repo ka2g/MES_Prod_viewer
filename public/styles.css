@@ -633,3 +633,102 @@ body {
 .hidden {
   display: none !important;
 }
+
+/* SMT 생산실 온습도 패널 */
+.env-panel {
+  max-width: var(--layout-max);
+  margin: 24px auto 40px;
+  padding: 20px clamp(16px, 2.5vw, 40px);
+  background: var(--card-bg);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.env-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.env-panel__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.env-panel__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.env-panel__status {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.env-panel__status--ok {
+  color: var(--ok);
+  background: #ecfdf3;
+}
+
+.env-panel__status--warn {
+  color: #c2410c;
+  background: #fff7ed;
+}
+
+.env-panel__gauges {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.env-gauge {
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.env-gauge--temp {
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+}
+
+.env-gauge--hum {
+  background: linear-gradient(135deg, #eff6ff 0%, #fff 100%);
+}
+
+.env-gauge__label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.env-gauge__value {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.env-gauge--temp .env-gauge__value {
+  color: #dc2626;
+}
+
+.env-gauge--hum .env-gauge__value {
+  color: #2563eb;
+}
+
+.env-panel__chart-wrap {
+  position: relative;
+  height: min(280px, 38vh);
+  min-height: 200px;
+}

@@ -54,8 +54,33 @@
       ></div>
 
       <p id="emptyState" class="empty hidden"></p>
+
+      <section id="envPanel" class="env-panel" aria-label="SMT 생산실 온습도">
+        <div class="env-panel__head">
+          <h2 class="env-panel__title">SMT 생산실 온·습도</h2>
+          <div class="env-panel__meta">
+            <span id="envStatus" class="env-panel__status env-panel__status--warn">연결 중…</span>
+            <span id="envUpdated" class="env-panel__updated">—</span>
+          </div>
+        </div>
+        <div class="env-panel__gauges">
+          <div class="env-gauge env-gauge--temp">
+            <div class="env-gauge__label">온도</div>
+            <div id="envTempVal" class="env-gauge__value">—</div>
+          </div>
+          <div class="env-gauge env-gauge--hum">
+            <div class="env-gauge__label">습도</div>
+            <div id="envHumVal" class="env-gauge__value">—</div>
+          </div>
+        </div>
+        <div class="env-panel__chart-wrap">
+          <canvas id="envChart" aria-label="24시간 온습도 차트"></canvas>
+        </div>
+      </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/env.js" defer></script>
   </body>
 </html>

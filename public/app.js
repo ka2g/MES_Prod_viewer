@@ -539,6 +539,10 @@ function switchPhase(next) {
   const p = next === 'assy' ? 'assy' : 'smt'
   if (p === currentPhase) return
   currentPhase = p
+  document.body.dataset.phase = currentPhase
+  window.dispatchEvent(
+    new CustomEvent('mes-phase-change', { detail: { phase: currentPhase } }),
+  )
   updatePhaseButtons()
   lineListEl.replaceChildren()
   hiddenLinesBarEl.classList.add('hidden')
@@ -560,6 +564,10 @@ phaseSmtBtn.addEventListener('click', () => switchPhase('smt'))
 phaseAssyBtn.addEventListener('click', () => switchPhase('assy'))
 
 updatePhaseButtons()
+document.body.dataset.phase = currentPhase
+window.dispatchEvent(
+  new CustomEvent('mes-phase-change', { detail: { phase: currentPhase } }),
+)
 
 if (typeof EventSource !== 'undefined') {
   connectStream()
