@@ -69,8 +69,24 @@ MES Prod Viewer의 `/api/env/ingest` 로 온·습도를 전송합니다.
 
 1. 보드: **ESP32 Dev Module**
 2. 라이브러리: **Adafruit SHT4x**, **Adafruit BusIO**, **Adafruit Unified Sensor**
-3. `esp32_smt_env.ino` 에서 Wi-Fi, `SERVER_BASE`, `DEVICE_KEY`, `OTA_PASSWORD` 수정
-4. USB 업로드 후 시리얼 115200: `[SHT45] OK`, `[HTTP] POST 200`, `[OTA] ready` 확인
+3. `esp32_smt_env.ino` 에서 Wi-Fi SSID/비밀번호, **고정 IP**(전산팀 값), `SERVER_BASE`, `DEVICE_KEY` 수정
+4. USB 업로드 후 시리얼 115200: `[WiFi] IP: 10.201.217.25`, `[HTTP] POST 200` 확인
+
+## 고정 IP (전산팀 B 방식)
+
+Wi-Fi SSID/비밀번호로 AP에 붙은 뒤, **장비에 IP를 직접 설정**합니다.
+
+| 항목 | 펌웨어 상수 | 현장 예 (전산 확인) |
+|------|-------------|---------------------|
+| IP | `STATIC_LOCAL_IP` | **10.201.217.25** |
+| 게이트웨이 | `STATIC_GATEWAY` | 예: 10.201.217.1 |
+| 서브넷 | `STATIC_SUBNET` | 예: 255.255.255.0 |
+| DNS | `STATIC_DNS1` | 전산팀 제공 (없으면 게이트웨이) |
+
+- `USE_STATIC_IP = true` (기본). DHCP 쓰려면 `false`.
+- `WiFi.begin()` **직전** `WiFi.config(...)` 자동 호출.
+- 시리얼에 `[WiFi] MAC xx:xx:...` 출력 → 전산 MAC 등록 요청 시 사용.
+- 뷰어 PC(`10.201.219.240:3000`)와 **다른 서브넷**이면 전산에 **217.25 → 219.240:3000** 방화벽/라우팅 요청.
 
 ## 네트워크 자동 복구
 
@@ -105,3 +121,27 @@ ENV_DEVICE_ID=SMT_SHT-01
 ```
 
 뷰어 PC `npm start` → 브라우저 **SMT** 탭 하단 차트 확인.
+
+## 문제 해결
+
+### 시리얼에 SHT45 OK 인데 서버·차트가 안 바뀔 때
+
+1. **Wi-Fi 연결** — 시리얼에 `[HTTP] POST 200` 이 보여야 합니다.  
+   - `reason=202 (AUTH_FAIL)` → SSID/비밀번호 확인  
+   - `reason=15` → **ESP-32U는 U.FL 외장 안테나 필수**, AP와 거리 확인  
+   - `[HTTP] skip — WiFi not connected` → POST 자체가 안 나감  
+
+2. **서버 주소** — `SERVER_BASE` 가 뷰어 PC IP와 포트와 일치 (`http://10.201.219.240:3000` 등)
+
+3. **장치 ID** — 펌웨어 `DEVICE_ID` 와 서버 `.env` **`ENV_DEVICE_ID=SMT_SHT-01`** 동일
+
+4. **API 키** — `.env` **`ENV_INGEST_KEY`** 와 펌웨어 **`DEVICE_KEY`** 동일 (401이면 불일치)
+
+5. **서버 재시작** — `.env` 수정 후 `npm start` 다시 실행
+
+6. **서버 로그** — ingest 성공 시 `[env/ingest] SMT_SHT-01 T=...` 출력
+
+### 옛 테스트 데이터(24.5℃ / 15554분 전)가 보일 때
+
+`data/env/readings-*.jsonl` 에 예전 `smt-01` 테스트 행이 남아 있을 수 있습니다.  
+`.env` 의 `ENV_DEVICE_ID` 를 맞춘 뒤 ESP32가 POST 200을 보내면 최신값으로 갱신됩니다.

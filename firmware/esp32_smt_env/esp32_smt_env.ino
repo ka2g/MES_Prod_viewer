@@ -18,10 +18,20 @@
 const char* WIFI_SSID = "YOUR_WIFI_SSID";
 const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
 
-const char* SERVER_BASE = "http://192.168.0.10:3000";
+// MES Prod Viewer (뷰어 PC) — ESP32는 localhost 사용 불가, PC IP 사용
+const char* SERVER_BASE = "http://10.201.219.240:3000";
 const char* INGEST_PATH = "/api/env/ingest";
 const char* DEVICE_KEY = "change-me-env-key";
 const char* DEVICE_ID = "SMT_SHT-01";
+
+// ---------- 고정 IP (전산팀 B 방식) — WiFi.begin() 전에 적용 ----------
+const bool USE_STATIC_IP = true;
+// 전산팀에서 받은 값으로 수정 (mask/gateway/DNS 불일치 시 연결·POST 실패)
+const IPAddress STATIC_LOCAL_IP(10, 201, 217, 25);
+const IPAddress STATIC_GATEWAY(10, 201, 216, 254);
+const IPAddress STATIC_SUBNET(255, 255, 254, 0);
+const IPAddress STATIC_DNS1(10, 201, 215, 100);
+const IPAddress STATIC_DNS2(10, 201, 216, 101);
 
 // OTA (Arduino IDE → 네트워크 포트 업로드). 비우면 비밀번호 없음(비권장)
 const char* OTA_HOSTNAME = "smt-sht-01";
@@ -59,9 +69,21 @@ float lastHumPct = 0.0f;
 
 int wifiConnectFailStreak = 0;
 int httpPostFailStreak = 0;
+bool wifiCredentialsSent = false;
 
 enum WifiState { WIFI_STATE_DOWN, WIFI_STATE_CONNECTING, WIFI_STATE_UP };
 WifiState wifiState = WIFI_STATE_DOWN;
+
+const char* wifiDiscReasonStr(uint8_t reason) {
+  switch (reason) {
+    case 2: return "AUTH_EXPIRE";
+    case 15: return "4WAY_HANDSHAKE_TIMEOUT";
+    case 39: return "TIMEOUT";
+    case 201: return "NO_AP_FOUND";
+    case 202: return "AUTH_FAIL(check password/SSID)";
+    default: return "OTHER";
+  }
+}
 
 // ---------- Wi-Fi 이벤트 ----------
 void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -69,6 +91,11 @@ void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.print("[WiFi] IP: ");
       Serial.println(WiFi.localIP());
+      if (USE_STATIC_IP && WiFi.localIP() != STATIC_LOCAL_IP) {
+        Serial.print("[WiFi] WARN expected ");
+        Serial.print(STATIC_LOCAL_IP);
+        Serial.println(" — check gateway/subnet/DNS with IT");
+      }
       wifiState = WIFI_STATE_UP;
       lastWifiConnectedMs = millis();
       wifiConnectFailStreak = 0;
@@ -79,12 +106,25 @@ void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
       wifiState = WIFI_STATE_DOWN;
       otaStarted = false;
-      Serial.printf("[WiFi] disconnected reason=%d\n",
-                    info.wifi_sta_disconnected.reason);
+      Serial.printf("[WiFi] disconnected reason=%d (%s)\n",
+                    info.wifi_sta_disconnected.reason,
+                    wifiDiscReasonStr(info.wifi_sta_disconnected.reason));
       break;
 
     default:
       break;
+  }
+}
+
+void applyStaticIpIfEnabled() {
+  if (!USE_STATIC_IP) return;
+  if (!WiFi.config(STATIC_LOCAL_IP, STATIC_GATEWAY, STATIC_SUBNET, STATIC_DNS1, STATIC_DNS2)) {
+    Serial.println("[WiFi] static IP config failed");
+  } else {
+    Serial.print("[WiFi] static IP set ");
+    Serial.print(STATIC_LOCAL_IP);
+    Serial.print(" gw ");
+    Serial.println(STATIC_GATEWAY);
   }
 }
 
@@ -106,12 +146,10 @@ void setupArduinoOta() {
     Serial.printf("[OTA] error %u\n", err);
   });
 
-  if (ArduinoOTA.begin()) {
-    otaStarted = true;
-    Serial.printf("[OTA] ready hostname=%s\n", OTA_HOSTNAME);
-  } else {
-    Serial.println("[OTA] begin failed");
-  }
+  // ESP32 Arduino core 2.x: begin() returns void (not bool)
+  ArduinoOTA.begin();
+  otaStarted = true;
+  Serial.printf("[OTA] ready hostname=%s\n", OTA_HOSTNAME);
 }
 
 void startWifiConnect() {
@@ -120,11 +158,21 @@ void startWifiConnect() {
   Serial.printf("[WiFi] connect attempt (backoff %lu ms, streak %d)\n",
                 wifiBackoffMs, wifiConnectFailStreak);
 
-  WiFi.disconnect(true, false);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  applyStaticIpIfEnabled();
+
+  if (wifiCredentialsSent) {
+    // erase=false — 저장된 SSID/비밀번호 유지 (매번 disconnect(true) 시 reason=202 유발 가능)
+    WiFi.disconnect(false, false);
+    WiFi.reconnect();
+  } else {
+    WiFi.disconnect(false, false);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    wifiCredentialsSent = true;
+  }
 
   wifiState = WIFI_STATE_CONNECTING;
   lastWifiAttemptMs = millis();
@@ -152,7 +200,7 @@ void forceWifiReconnect(const char* reason) {
   Serial.printf("[WiFi] force reconnect: %s\n", reason);
   httpPostFailStreak = 0;
   otaStarted = false;
-  WiFi.disconnect(true, false);
+  WiFi.disconnect(false, false);
   wifiState = WIFI_STATE_DOWN;
   lastWifiAttemptMs = millis() - wifiBackoffMs;
 }
@@ -277,7 +325,13 @@ bool postReading() {
   int code = http.POST(body);
   http.end();
 
-  Serial.printf("[HTTP] POST %d\n", code);
+  if (code == 401) {
+    Serial.println("[HTTP] POST 401 — check DEVICE_KEY vs server ENV_INGEST_KEY");
+  } else if (code <= 0) {
+    Serial.printf("[HTTP] POST failed code=%d (server reachable? SERVER_BASE correct?)\n", code);
+  } else {
+    Serial.printf("[HTTP] POST %d\n", code);
+  }
   return code >= 200 && code < 300;
 }
 
@@ -285,6 +339,8 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\nSMT env — ESP32 + SHT45");
+  Serial.print("[WiFi] MAC ");
+  Serial.println(WiFi.macAddress());
 
   WiFi.onEvent(onWiFiEvent);
 
@@ -315,6 +371,7 @@ void loop() {
     }
 
     if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[HTTP] skip — WiFi not connected");
       return;
     }
 

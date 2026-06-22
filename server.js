@@ -23,7 +23,7 @@ const ENV_REFRESH_MS = Math.max(
   5000,
   parseInt(process.env.ENV_REFRESH_MS || '15000', 10) || 15000,
 )
-const ENV_DEVICE_ID = String(process.env.ENV_DEVICE_ID || 'smt-01').trim()
+const ENV_DEVICE_ID = String(process.env.ENV_DEVICE_ID || 'SMT_SHT-01').trim()
 const ENV_INGEST_KEY = String(process.env.ENV_INGEST_KEY || '').trim()
 const ENV_HISTORY_HOURS = Math.min(
   168,
@@ -31,12 +31,13 @@ const ENV_HISTORY_HOURS = Math.min(
 )
 const ENV_HISTORY_BUCKET_MIN = Math.max(
   1,
-  parseInt(process.env.ENV_HISTORY_BUCKET_MIN || '5', 10) || 5,
+  parseInt(process.env.ENV_HISTORY_BUCKET_MIN || '10', 10) || 10,
 )
 const ENV_RETENTION_DAYS = Math.max(
   0,
   parseInt(process.env.ENV_RETENTION_DAYS || '90', 10) || 90,
 )
+const ENV_SETTINGS_PIN = String(process.env.ENV_SETTINGS_PIN || 'smt1234').trim()
 
 const app = express()
 app.disable('x-powered-by')
@@ -54,16 +55,15 @@ function clampNum(v, min, max) {
 }
 
 function buildEnvPayload() {
-  const latest = envStore.getLatest(ENV_DEVICE_ID)
-  const history = envStore.getHistory(
-    ENV_DEVICE_ID,
-    ENV_HISTORY_HOURS,
-    ENV_HISTORY_BUCKET_MIN,
-  )
+  let latest = envStore.getLatest(ENV_DEVICE_ID)
+  if (!latest) latest = envStore.getLatestAny()
+  const historyDeviceId = latest ? latest.deviceId : ENV_DEVICE_ID
+  const history = envStore.getTodayHistory10Min(historyDeviceId, ENV_HISTORY_BUCKET_MIN)
   return {
     ok: true,
     fetchedAt: new Date().toISOString(),
     deviceId: ENV_DEVICE_ID,
+    chartMode: 'day',
     latest: latest
       ? {
           ...latest,
@@ -93,6 +93,19 @@ function ingestKeyOk(req) {
   if (!ENV_INGEST_KEY) return true
   const key = req.get('X-Device-Key') || req.get('x-device-key') || ''
   return key === ENV_INGEST_KEY
+}
+
+function settingsPinOk(req) {
+  const pin =
+    req.get('X-Settings-Pin') ||
+    req.get('x-settings-pin') ||
+    (req.body && req.body.pin) ||
+    ''
+  return pin === ENV_SETTINGS_PIN
+}
+
+function roundEnv1(v) {
+  return Math.round(v * 10) / 10
 }
 
 function normalizePhaseQuery(q) {
@@ -135,12 +148,15 @@ app.post('/api/env/ingest', (req, res) => {
   try {
     const body = req.body || {}
     const deviceId = String(body.deviceId || ENV_DEVICE_ID).trim()
-    const tempC = clampNum(Number(body.tempC), -50, 80)
-    const humidityPct = clampNum(Number(body.humidityPct), 0, 100)
-    if (tempC === null || humidityPct === null) {
+    const rawTempC = clampNum(Number(body.tempC), -50, 80)
+    const rawHumidityPct = clampNum(Number(body.humidityPct), 0, 100)
+    if (rawTempC === null || rawHumidityPct === null) {
       res.status(400).json({ ok: false, error: 'tempC and humidityPct required' })
       return
     }
+    const calibrated = envStore.applyCalibration(rawTempC, rawHumidityPct)
+    const tempC = calibrated.tempC
+    const humidityPct = calibrated.humidityPct
     const tsRaw = body.ts != null ? new Date(body.ts).getTime() : Date.now()
     const ts = Number.isFinite(tsRaw) ? tsRaw : Date.now()
     const rawTemp =
@@ -152,9 +168,13 @@ app.post('/api/env/ingest', (req, res) => {
       ts,
       tempC,
       humidityPct,
-      rawTemp: Number.isFinite(rawTemp) ? rawTemp : null,
-      rawHum: Number.isFinite(rawHum) ? rawHum : null,
+      rawTemp: Number.isFinite(rawTemp) ? rawTemp : roundEnv1(rawTempC),
+      rawHum: Number.isFinite(rawHum) ? rawHum : roundEnv1(rawHumidityPct),
     })
+
+    console.log(
+      `[env/ingest] ${deviceId} T=${tempC} RH=${humidityPct}% ts=${new Date(ts).toISOString()}`,
+    )
 
     res.json({ ok: true, deviceId, ts })
     broadcastEnvSse()
@@ -194,6 +214,77 @@ app.get('/api/env/history', (req, res) => {
     )
     const history = envStore.getHistory(ENV_DEVICE_ID, hours, bucket)
     res.json({ ok: true, deviceId: ENV_DEVICE_ID, hours, bucketMinutes: bucket, history })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, history: [] })
+  }
+})
+
+app.get('/api/env/months', (_req, res) => {
+  try {
+    let latest = envStore.getLatest(ENV_DEVICE_ID)
+    if (!latest) latest = envStore.getLatestAny()
+    const deviceId = latest ? latest.deviceId : ENV_DEVICE_ID
+    const months = envStore.listBrowsableMonths(deviceId)
+    res.json({ ok: true, deviceId, months })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, months: [] })
+  }
+})
+
+app.get('/api/env/calibration', (_req, res) => {
+  try {
+    res.json({ ok: true, calibration: envStore.getCalibration() })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+app.put('/api/env/calibration', (req, res) => {
+  if (!settingsPinOk(req)) {
+    res.status(403).json({ ok: false, error: 'Invalid settings PIN' })
+    return
+  }
+  try {
+    const body = req.body || {}
+    const current = envStore.getCalibration()
+    const tempOffset =
+      body.tempOffset != null ? roundEnv1(Number(body.tempOffset)) : current.tempOffset
+    const humidityOffset =
+      body.humidityOffset != null
+        ? roundEnv1(Number(body.humidityOffset))
+        : current.humidityOffset
+    if (!Number.isFinite(tempOffset) || !Number.isFinite(humidityOffset)) {
+      res.status(400).json({ ok: false, error: 'Invalid offset values' })
+      return
+    }
+    const calibration = envStore.setCalibration({ tempOffset, humidityOffset })
+    res.json({ ok: true, calibration })
+    broadcastEnvSse()
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+app.get('/api/env/month', (req, res) => {
+  try {
+    const now = new Date()
+    const year = parseInt(String(req.query.year || now.getFullYear()), 10) || now.getFullYear()
+    const month =
+      parseInt(String(req.query.month || now.getMonth() + 1), 10) || now.getMonth() + 1
+    if (month < 1 || month > 12) {
+      res.status(400).json({ ok: false, error: 'Invalid month' })
+      return
+    }
+    let latest = envStore.getLatest(ENV_DEVICE_ID)
+    if (!latest) latest = envStore.getLatestAny()
+    const deviceId = latest ? latest.deviceId : ENV_DEVICE_ID
+    const monthData = envStore.getMonthDailyFromCsv(deviceId, year, month)
+    res.json({
+      ok: true,
+      deviceId,
+      chartMode: 'month',
+      ...monthData,
+    })
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message, history: [] })
   }

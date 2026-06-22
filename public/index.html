@@ -37,6 +37,9 @@
             <span class="dot dot--green"></span>
             실시간 연동
           </span>
+          <button type="button" id="envSettingsBtn" class="topbar-settings-btn" title="온습도 설정">
+            설정
+          </button>
           <span id="clockLabel" class="clock">–</span>
         </div>
       </div>
@@ -55,9 +58,9 @@
 
       <p id="emptyState" class="empty hidden"></p>
 
-      <section id="envPanel" class="env-panel" aria-label="SMT 생산실 온습도">
+      <section id="envPanel" class="env-panel" aria-label="SMT 현장 온습도">
         <div class="env-panel__head">
-          <h2 class="env-panel__title">SMT 생산실 온·습도</h2>
+          <h2 class="env-panel__title">SMT 현장 온·습도</h2>
           <div class="env-panel__meta">
             <span id="envStatus" class="env-panel__status env-panel__status--warn">연결 중…</span>
             <span id="envUpdated" class="env-panel__updated">—</span>
@@ -65,19 +68,84 @@
         </div>
         <div class="env-panel__gauges">
           <div class="env-gauge env-gauge--temp">
-            <div class="env-gauge__label">온도</div>
-            <div id="envTempVal" class="env-gauge__value">—</div>
+            <div class="env-gauge__main">
+              <div id="envTempVal" class="env-gauge__value">—</div>
+              <span id="envTempTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+            </div>
           </div>
           <div class="env-gauge env-gauge--hum">
-            <div class="env-gauge__label">습도</div>
-            <div id="envHumVal" class="env-gauge__value">—</div>
+            <div class="env-gauge__main">
+              <div id="envHumVal" class="env-gauge__value">—</div>
+              <span id="envHumTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+        <div class="env-panel__chart-toolbar">
+          <p id="envChartTitle" class="env-panel__chart-title">오늘 · 10분 간격</p>
+          <div class="env-chart-toolbar-right">
+            <div id="envMonthNav" class="env-month-nav hidden" aria-label="월 선택">
+              <button type="button" id="envMonthPrev" class="env-month-nav__btn" title="이전 달">◀</button>
+              <select id="envMonthSelect" class="env-month-nav__select" aria-label="조회 월"></select>
+              <button type="button" id="envMonthNext" class="env-month-nav__btn" title="다음 달">▶</button>
+            </div>
+            <div class="env-chart-mode" role="tablist" aria-label="차트 보기">
+              <button type="button" id="envModeDay" class="env-mode-btn env-mode-btn--active" role="tab" aria-selected="true">
+                오늘
+              </button>
+              <button type="button" id="envModeMonth" class="env-mode-btn" role="tab" aria-selected="false">
+                월간
+              </button>
+            </div>
           </div>
         </div>
         <div class="env-panel__chart-wrap">
-          <canvas id="envChart" aria-label="24시간 온습도 차트"></canvas>
+          <canvas id="envChart" aria-label="SMT 현장 온습도 차트"></canvas>
         </div>
       </section>
     </main>
+
+    <div id="envPinModal" class="env-modal hidden" role="dialog" aria-modal="true" aria-labelledby="envPinTitle">
+      <div class="env-modal__backdrop" data-env-modal-close></div>
+      <div class="env-modal__panel">
+        <h3 id="envPinTitle" class="env-modal__title">설정 접근</h3>
+        <p class="env-modal__hint">설정 메뉴를 열려면 비밀번호를 입력하세요.</p>
+        <input type="password" id="envPinInput" class="env-modal__input" autocomplete="off" placeholder="비밀번호" />
+        <p id="envPinError" class="env-modal__error hidden">비밀번호가 올바르지 않습니다.</p>
+        <div class="env-modal__actions">
+          <button type="button" class="env-modal__btn env-modal__btn--ghost" data-env-modal-close>취소</button>
+          <button type="button" id="envPinSubmit" class="env-modal__btn env-modal__btn--primary">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="envSettingsModal" class="env-modal hidden" role="dialog" aria-modal="true" aria-labelledby="envSettingsTitle">
+      <div class="env-modal__backdrop" data-env-modal-close></div>
+      <div class="env-modal__panel env-modal__panel--wide">
+        <h3 id="envSettingsTitle" class="env-modal__title">온·습도 보정</h3>
+        <p class="env-modal__hint">센서 원값에 보정값을 더해 실시간 표시 및 CSV 기록에 반영합니다. (0.1 단위)</p>
+        <div class="env-cal-row">
+          <span class="env-cal-row__label">온도 보정 (℃)</span>
+          <div class="env-cal-row__ctrl">
+            <button type="button" id="envCalTempDown" class="env-cal-btn" aria-label="온도 보정 감소">−</button>
+            <output id="envCalTempVal" class="env-cal-val">0.0</output>
+            <button type="button" id="envCalTempUp" class="env-cal-btn" aria-label="온도 보정 증가">+</button>
+          </div>
+        </div>
+        <div class="env-cal-row">
+          <span class="env-cal-row__label">습도 보정 (%RH)</span>
+          <div class="env-cal-row__ctrl">
+            <button type="button" id="envCalHumDown" class="env-cal-btn" aria-label="습도 보정 감소">−</button>
+            <output id="envCalHumVal" class="env-cal-val">0.0</output>
+            <button type="button" id="envCalHumUp" class="env-cal-btn" aria-label="습도 보정 증가">+</button>
+          </div>
+        </div>
+        <p id="envCalStatus" class="env-modal__status hidden"></p>
+        <div class="env-modal__actions">
+          <button type="button" class="env-modal__btn env-modal__btn--ghost" data-env-modal-close>닫기</button>
+          <button type="button" id="envCalApply" class="env-modal__btn env-modal__btn--primary">적용</button>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <script src="/app.js" defer></script>

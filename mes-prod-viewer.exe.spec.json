@@ -10,9 +10,13 @@
   "includedScripts": [
     "./server.js",
     "./mesRepository.js",
-    "./lineActivity.js"
+    "./lineActivity.js",
+    "./envStore.js"
   ],
-  "includedAssets": ["./public/**/*"],
+  "includedAssets": [
+    "./public/**/*",
+    "./images/**/*"
+  ],
   "pkgTarget": "node18-win-x64",
   "output": {
     "directory": "./dist",
@@ -20,12 +24,15 @@
   },
   "deployment": [
     "dist/mes-prod-viewer.exe 복사",
-    "실행 폴더에 .env 배치(MSSQL_*, PORT=5000 등). dotenv 규칙",
+    "실행 폴더에 .env 배치 (MSSQL_*, PORT, ENV_* 등). dotenv 규칙",
     "접속: http://(서버IP):(PORT) — HOST=0.0.0.0 권장",
-    "방화벽 해당 TCP 포트 허용"
+    "방화벽 해당 TCP 포트 허용",
+    "UI/서버 코드 변경 시 public만 덮어쓰지 말고 npm run build:exe 후 exe 교체",
+    "data/env/ 는 exe 옆에 자동 생성 (JSONL, CSV, calibration.json)"
   ],
   "buildWarnings": [
-    "Cannot include ... xdg-open — Linux용 보조파일이라 Windows 현장 단독 배포는 무시 가능",
-    "open 패키지 import.meta 관련 bytecode 경고는 mssql→azure 등 의존성에서 나올 수 있음. exe 자체 생성에는 지장 없었음이 일반적"
+    "Cannot include ... xdg-open — Linux용 보조파일, Windows 현장 단독 배포는 무시 가능",
+    "open / default-browser 등 import.meta·bytecode 경고 — mssql 의존성에서 흔함, exe 생성·실행에는 보통 지장 없음",
+    "연결 중… 고착 시 브라우저 Console에서 env.js 오류 확인, 수정 후 반드시 재빌드"
   ]
 }
