@@ -29,6 +29,26 @@ const envCalHumUp = document.getElementById('envCalHumUp')
 const envCalHumDown = document.getElementById('envCalHumDown')
 const envCalApplyBtn = document.getElementById('envCalApply')
 const envCalStatusEl = document.getElementById('envCalStatus')
+const envTempGaugeEl = document.getElementById('envTempGauge')
+const envHumGaugeEl = document.getElementById('envHumGauge')
+const envTempStateEl = document.getElementById('envTempState')
+const envHumStateEl = document.getElementById('envHumState')
+const envTempStatsEl = document.getElementById('envTempStats')
+const envHumStatsEl = document.getElementById('envHumStats')
+const envStatTempEl = document.getElementById('envStatTemp')
+const envStatHumEl = document.getElementById('envStatHum')
+const envStatTempBreachEl = document.getElementById('envStatTempBreach')
+const envStatHumBreachEl = document.getElementById('envStatHumBreach')
+const envModeRangeBtn = document.getElementById('envModeRange')
+const envRangeNavEl = document.getElementById('envRangeNav')
+const envRangeFromEl = document.getElementById('envRangeFrom')
+const envRangeToEl = document.getElementById('envRangeTo')
+const envRangeApplyBtn = document.getElementById('envRangeApply')
+const envRangeWeekBtn = document.getElementById('envRangeWeek')
+const envExportBtn = document.getElementById('envExportBtn')
+const envAlarmListEl = document.getElementById('envAlarmList')
+const envAlarmRefreshBtn = document.getElementById('envAlarmRefresh')
+const kioskBtn = document.getElementById('kioskBtn')
 
 const SETTINGS_PIN = 'smt1234'
 const CAL_STEP = 0.1
@@ -38,9 +58,10 @@ const CAL_MAX = 50
 let envEventSource = null
 let envChart = null
 let lastEnvPayload = null
-/** @type {'day'|'month'} */
+/** @type {'day'|'month'|'range'} */
 let chartViewMode = 'day'
 let monthChartMeta = null
+let rangeChartMeta = null
 /** @type {{ year: number, month: number, key: string }[]} */
 let availableMonths = []
 let selectedMonthYear = new Date().getFullYear()
@@ -50,9 +71,9 @@ let draftHumOffset = 0
 let settingsPin = null
 let prevTempC = null
 let prevHumidityPct = null
+let lastAlarmSignature = ''
 
-const TEMP_LIMITS = [22, 28]
-const HUM_LIMITS = [40, 60]
+const thresholds = { tempMin: 22, tempMax: 28, humMin: 40, humMax: 60 }
 
 const tenMinGridPlugin = {
   id: 'envTenMinGrid',
@@ -74,6 +95,54 @@ const tenMinGridPlugin = {
     }
     ctx.restore()
   },
+}
+
+const envLimitsPlugin = {
+  id: 'envLimits',
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart
+    if (!chartArea) return
+    const { left, right } = chartArea
+    const yTemp = scales.yTemp
+    const yHum = scales.yHum
+    ctx.save()
+
+    // 온도 쾌적 구간 음영(연녹색)
+    if (yTemp) {
+      const yTop = yTemp.getPixelForValue(thresholds.tempMax)
+      const yBot = yTemp.getPixelForValue(thresholds.tempMin)
+      ctx.fillStyle = 'rgba(22, 163, 74, 0.07)'
+      ctx.fillRect(left, yTop, right - left, yBot - yTop)
+    }
+
+    const dash = (y, color) => {
+      ctx.beginPath()
+      ctx.setLineDash([6, 5])
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.2
+      ctx.moveTo(left, y)
+      ctx.lineTo(right, y)
+      ctx.stroke()
+    }
+    if (yTemp) {
+      dash(yTemp.getPixelForValue(thresholds.tempMin), 'rgba(220, 38, 38, 0.5)')
+      dash(yTemp.getPixelForValue(thresholds.tempMax), 'rgba(220, 38, 38, 0.5)')
+    }
+    if (yHum) {
+      dash(yHum.getPixelForValue(thresholds.humMin), 'rgba(37, 99, 235, 0.5)')
+      dash(yHum.getPixelForValue(thresholds.humMax), 'rgba(37, 99, 235, 0.5)')
+    }
+    ctx.setLineDash([])
+    ctx.restore()
+  },
+}
+
+function tempOutOfRange(y) {
+  return Number.isFinite(y) && (y < thresholds.tempMin || y > thresholds.tempMax)
+}
+
+function humOutOfRange(y) {
+  return Number.isFinite(y) && (y < thresholds.humMin || y > thresholds.humMax)
 }
 
 function envVisible() {
@@ -101,24 +170,6 @@ function formatMinLabel(totalMin) {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-function buildRefDatasets(xMin, xMax, yAxisID, values, color) {
-  return values.map((y) => ({
-    label: `_limit_${yAxisID}_${y}`,
-    data: [
-      { x: xMin, y },
-      { x: xMax, y },
-    ],
-    borderColor: color,
-    borderDash: [6, 5],
-    borderWidth: 1.2,
-    pointRadius: 0,
-    pointHitRadius: 0,
-    yAxisID,
-    order: 0,
-    tension: 0,
-  }))
-}
-
 function mainDatasets() {
   return [
     {
@@ -128,8 +179,10 @@ function mainDatasets() {
       backgroundColor: 'rgba(220, 38, 38, 0.06)',
       yAxisID: 'yTemp',
       tension: 0.2,
-      pointRadius: 2,
-      pointHoverRadius: 4,
+      pointRadius: (ctx) => (tempOutOfRange(ctx.parsed?.y) ? 4 : 2),
+      pointHoverRadius: 5,
+      pointBackgroundColor: (ctx) => (tempOutOfRange(ctx.parsed?.y) ? '#7f1d1d' : '#dc2626'),
+      pointBorderColor: (ctx) => (tempOutOfRange(ctx.parsed?.y) ? '#7f1d1d' : '#dc2626'),
       borderWidth: 2,
       order: 2,
     },
@@ -140,8 +193,10 @@ function mainDatasets() {
       backgroundColor: 'rgba(37, 99, 235, 0.06)',
       yAxisID: 'yHum',
       tension: 0.2,
-      pointRadius: 2,
-      pointHoverRadius: 4,
+      pointRadius: (ctx) => (humOutOfRange(ctx.parsed?.y) ? 4 : 2),
+      pointHoverRadius: 5,
+      pointBackgroundColor: (ctx) => (humOutOfRange(ctx.parsed?.y) ? '#1e3a8a' : '#2563eb'),
+      pointBorderColor: (ctx) => (humOutOfRange(ctx.parsed?.y) ? '#1e3a8a' : '#2563eb'),
       borderWidth: 2,
       order: 2,
     },
@@ -211,22 +266,49 @@ function destroyChart() {
   }
 }
 
-function createChart(mode, daysInMonth) {
+function rangeScaleOptions(fromMs, toMs) {
+  const spanMs = Math.max(1, toMs - fromMs)
+  const multiDay = spanMs > 36 * 3600 * 1000
+  return {
+    x: {
+      type: 'linear',
+      min: fromMs,
+      max: toMs,
+      ticks: {
+        maxRotation: 0,
+        autoSkip: true,
+        maxTicksLimit: 12,
+        callback: (v) => formatRangeTick(v, multiDay),
+        font: { size: 10 },
+      },
+      title: { display: true, text: '기간' },
+      grid: { color: 'rgba(107,114,128,0.1)' },
+    },
+    yTemp: dayScaleOptions().yTemp,
+    yHum: dayScaleOptions().yHum,
+  }
+}
+
+function formatRangeTick(ms, multiDay) {
+  const d = new Date(ms)
+  const pad = (n) => String(n).padStart(2, '0')
+  if (multiDay) return `${d.getMonth() + 1}/${d.getDate()}`
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function scalesForMode(mode, arg) {
+  if (mode === 'day') return dayScaleOptions()
+  if (mode === 'month') return monthScaleOptions(arg || 31)
+  return rangeScaleOptions(arg?.fromMs ?? Date.now() - 86400000, arg?.toMs ?? Date.now())
+}
+
+function createChart(mode, arg) {
   destroyChart()
   if (!envChartCanvas || typeof Chart === 'undefined') return null
 
-  const xMin = mode === 'day' ? 0 : 1
-  const xMax = mode === 'day' ? 1440 : daysInMonth || 31
-
   envChart = new Chart(envChartCanvas, {
     type: 'line',
-    data: {
-      datasets: [
-        ...mainDatasets(),
-        ...buildRefDatasets(xMin, xMax, 'yTemp', TEMP_LIMITS, 'rgba(220, 38, 38, 0.55)'),
-        ...buildRefDatasets(xMin, xMax, 'yHum', HUM_LIMITS, 'rgba(37, 99, 235, 0.55)'),
-      ],
-    },
+    data: { datasets: mainDatasets() },
     options: {
       envMode: mode,
       responsive: true,
@@ -235,10 +317,7 @@ function createChart(mode, daysInMonth) {
       plugins: {
         legend: {
           position: 'top',
-          labels: {
-            font: { family: "'Noto Sans KR', sans-serif" },
-            filter: (item) => !String(item.text).startsWith('_limit_'),
-          },
+          labels: { font: { family: "'Noto Sans KR', sans-serif" } },
         },
         tooltip: {
           callbacks: {
@@ -246,21 +325,28 @@ function createChart(mode, daysInMonth) {
               if (!items.length) return ''
               const x = items[0].parsed.x
               if (mode === 'day') return formatMinLabel(x)
-              return `${Math.round(x)}일`
+              if (mode === 'month') return `${Math.round(x)}일`
+              return formatRangeFull(x)
             },
           },
         },
       },
-      scales: mode === 'day' ? dayScaleOptions() : monthScaleOptions(daysInMonth),
+      scales: scalesForMode(mode, arg),
     },
-    plugins: [tenMinGridPlugin],
+    plugins: [tenMinGridPlugin, envLimitsPlugin],
   })
   return envChart
 }
 
-function ensureChart(mode, daysInMonth) {
+function formatRangeFull(ms) {
+  const d = new Date(ms)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function ensureChart(mode, arg) {
   if (!envChart || envChart.options.envMode !== mode) {
-    return createChart(mode, daysInMonth)
+    return createChart(mode, arg)
   }
   return envChart
 }
@@ -338,8 +424,57 @@ function formatCal(v) {
 }
 
 function syncMonthNavVisibility() {
-  if (!envMonthNavEl) return
-  envMonthNavEl.classList.toggle('hidden', chartViewMode !== 'month')
+  if (envMonthNavEl) {
+    envMonthNavEl.classList.toggle('hidden', chartViewMode !== 'month')
+  }
+  if (envRangeNavEl) {
+    envRangeNavEl.classList.toggle('hidden', chartViewMode !== 'range')
+  }
+}
+
+function toIsoDate(d) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function rangeBounds() {
+  const fromStr = envRangeFromEl?.value
+  const toStr = envRangeToEl?.value
+  const from = fromStr ? new Date(`${fromStr}T00:00:00`).getTime() : Date.now() - 7 * 86400000
+  const to = toStr ? new Date(`${toStr}T23:59:59`).getTime() : Date.now()
+  return { from, to }
+}
+
+function updateRangeChart(payload) {
+  const { from, to } = rangeBounds()
+  const chart = createChart('range', { fromMs: from, toMs: to })
+  if (!chart) return
+  const tempDs = chart.data.datasets.find((d) => d.label === '온도 (℃)')
+  const humDs = chart.data.datasets.find((d) => d.label === '습도 (%RH)')
+  if (!tempDs || !humDs) return
+  tempDs.data = (payload.history || []).map((p) => ({ x: p.ts, y: p.tempC }))
+  humDs.data = (payload.history || []).map((p) => ({ x: p.ts, y: p.humidityPct }))
+  chart.update('none')
+}
+
+async function loadRangeChart() {
+  const { from, to } = rangeBounds()
+  if (envChartTitleEl) {
+    const d = (ms) => {
+      const x = new Date(ms)
+      return `${x.getFullYear()}/${x.getMonth() + 1}/${x.getDate()}`
+    }
+    envChartTitleEl.textContent = `${d(from)} ~ ${d(to)} (구간 평균)`
+  }
+  try {
+    const r = await fetch(`/api/env/range?from=${from}&to=${to}`)
+    const data = await r.json()
+    if (!data.ok) return
+    rangeChartMeta = data
+    if (data.thresholds) applyThresholds(data.thresholds)
+    updateRangeChart(data)
+    renderStats(data.stats, '구간')
+  } catch (_) {}
 }
 
 function findMonthIndex(year, month) {
@@ -433,6 +568,192 @@ function shiftSelectedMonth(direction) {
   void loadMonthChart(next.year, next.month)
 }
 
+function applyThresholds(t) {
+  if (!t) return
+  if (t.tempMin != null) thresholds.tempMin = t.tempMin
+  if (t.tempMax != null) thresholds.tempMax = t.tempMax
+  if (t.humMin != null) thresholds.humMin = t.humMin
+  if (t.humMax != null) thresholds.humMax = t.humMax
+}
+
+function renderStats(stats, labelPrefix) {
+  const prefix = labelPrefix || '오늘'
+
+  function fill(statsEl, valEl, breachEl, block, unit) {
+    if (!statsEl || !valEl) return
+    if (!stats || !stats.count || !block) {
+      statsEl.classList.add('hidden')
+      valEl.textContent = '—'
+      if (breachEl) breachEl.textContent = ''
+      return
+    }
+    statsEl.classList.remove('hidden')
+    valEl.textContent = `${prefix} ${block.min} · ${block.avg} · ${block.max} ${unit}`
+    if (breachEl) {
+      breachEl.textContent = block.breachPct > 0 ? `이탈 ${block.breachPct}%` : ''
+    }
+  }
+
+  fill(envTempStatsEl, envStatTempEl, envStatTempBreachEl, stats?.temp, '℃')
+  fill(envHumStatsEl, envStatHumEl, envStatHumBreachEl, stats?.hum, '%RH')
+}
+
+function setGaugeState(gaugeEl, stateEl, value, min, max, hasAlarm) {
+  if (!gaugeEl) return
+  gaugeEl.classList.remove('env-gauge--ok', 'env-gauge--warn', 'env-gauge--alarm')
+  if (stateEl) {
+    stateEl.classList.add('hidden')
+    stateEl.textContent = ''
+  }
+  if (!Number.isFinite(value)) return
+
+  const out = value < min || value > max
+  if (hasAlarm) {
+    gaugeEl.classList.add('env-gauge--alarm')
+    if (stateEl) {
+      stateEl.classList.remove('hidden')
+      stateEl.textContent = value > max ? '상한 초과' : value < min ? '하한 미만' : '경보'
+    }
+  } else if (out) {
+    gaugeEl.classList.add('env-gauge--warn')
+    if (stateEl) {
+      stateEl.classList.remove('hidden')
+      stateEl.textContent = '주의'
+    }
+  } else {
+    gaugeEl.classList.add('env-gauge--ok')
+    if (stateEl) {
+      stateEl.classList.remove('hidden')
+      stateEl.textContent = '정상'
+    }
+  }
+}
+
+function applyGaugeStates(tempC, humidityPct, activeAlarms) {
+  const alarms = activeAlarms || []
+  const tempAlarm = alarms.some((a) => a.metric === 'temp' && a.state === 'raised')
+  const humAlarm = alarms.some((a) => a.metric === 'hum' && a.state === 'raised')
+  setGaugeState(
+    envTempGaugeEl,
+    envTempStateEl,
+    tempC,
+    thresholds.tempMin,
+    thresholds.tempMax,
+    tempAlarm,
+  )
+  setGaugeState(
+    envHumGaugeEl,
+    envHumStateEl,
+    humidityPct,
+    thresholds.humMin,
+    thresholds.humMax,
+    humAlarm,
+  )
+}
+
+function playAlarmBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    gain.gain.value = 0.08
+    osc.start()
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+    osc.stop(ctx.currentTime + 0.35)
+  } catch (_) {}
+}
+
+function checkAlarmSound(alarms) {
+  const active = (alarms || []).filter((a) => a.state === 'raised')
+  const sig = active.map((a) => `${a.metric}:${a.kind}`).sort().join('|')
+  if (sig && sig !== lastAlarmSignature) playAlarmBeep()
+  lastAlarmSignature = sig
+}
+
+function formatAlarmTime(ts) {
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatAlarmEvent(ev) {
+  const metric =
+    ev.metric === 'temp' ? '온도' : ev.metric === 'hum' ? '습도' : '센서'
+  const kind =
+    ev.kind === 'high' ? '상한 초과' : ev.kind === 'low' ? '하한 미만' : '수신 단절'
+  const unit = ev.metric === 'temp' ? '℃' : ev.metric === 'hum' ? '%RH' : ''
+  if (ev.state === 'raised') {
+    if (ev.metric === 'sensor') return `${metric} ${kind}`
+    return `${metric} ${kind} — ${ev.value}${unit}`
+  }
+  const dur =
+    ev.durationMs != null ? ` (${Math.max(1, Math.round(ev.durationMs / 60000))}분)` : ''
+  return `${metric} 정상 복귀${dur}`
+}
+
+function renderAlarmList(alarms) {
+  if (!envAlarmListEl) return
+  envAlarmListEl.innerHTML = ''
+  if (!alarms || alarms.length === 0) {
+    const li = document.createElement('li')
+    li.className = 'env-alarm-empty'
+    li.textContent = '최근 7일 경보 이력 없음'
+    envAlarmListEl.appendChild(li)
+    return
+  }
+  for (const ev of alarms.slice(0, 30)) {
+    const li = document.createElement('li')
+    li.className = `env-alarm-item env-alarm-item--${ev.state}`
+    li.innerHTML = `<span class="env-alarm-item__time">${formatAlarmTime(ev.ts)}</span><span class="env-alarm-item__msg">${formatAlarmEvent(ev)}</span>`
+    envAlarmListEl.appendChild(li)
+  }
+}
+
+async function loadAlarmHistory() {
+  const to = Date.now()
+  const from = to - 7 * 24 * 3600 * 1000
+  try {
+    const r = await fetch(`/api/env/alarms?from=${from}&to=${to}`)
+    const data = await r.json()
+    if (data.ok) renderAlarmList(data.alarms)
+  } catch (_) {
+    renderAlarmList([])
+  }
+}
+
+function initRangeDates() {
+  const now = new Date()
+  const weekAgo = new Date(now.getTime() - 6 * 86400000)
+  if (envRangeFromEl && !envRangeFromEl.value) envRangeFromEl.value = toIsoDate(weekAgo)
+  if (envRangeToEl && !envRangeToEl.value) envRangeToEl.value = toIsoDate(now)
+}
+
+function exportCsv() {
+  const { from, to } = rangeBounds()
+  window.location.href = `/api/env/export?from=${from}&to=${to}`
+}
+
+function toggleKiosk() {
+  const on = document.body.classList.toggle('env-kiosk')
+  const panel = envPanelEl
+  if (!panel) return
+  if (on) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    panel.requestFullscreen?.().catch(() => {})
+  } else {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) document.body.classList.remove('env-kiosk')
+})
+
 function formatGaugeValue(temp, hum) {
   if (envTempValEl) envTempValEl.textContent = `${temp.toFixed(1)}℃`
   if (envHumValEl) envHumValEl.textContent = `${hum.toFixed(1)}%`
@@ -461,12 +782,13 @@ function updateTrendEl(el, prev, next) {
   }
 }
 
-function applyGaugeReadings(tempC, humidityPct) {
+function applyGaugeReadings(tempC, humidityPct, activeAlarms) {
   if (!Number.isFinite(tempC) || !Number.isFinite(humidityPct)) {
     if (envTempValEl) envTempValEl.textContent = '—'
     if (envHumValEl) envHumValEl.textContent = '—'
     if (envTempTrendEl) envTempTrendEl.classList.add('hidden')
     if (envHumTrendEl) envHumTrendEl.classList.add('hidden')
+    applyGaugeStates(NaN, NaN, activeAlarms)
     prevTempC = null
     prevHumidityPct = null
     return
@@ -475,6 +797,7 @@ function applyGaugeReadings(tempC, humidityPct) {
   updateTrendEl(envTempTrendEl, prevTempC, tempC)
   updateTrendEl(envHumTrendEl, prevHumidityPct, humidityPct)
   formatGaugeValue(tempC, humidityPct)
+  applyGaugeStates(tempC, humidityPct, activeAlarms)
   prevTempC = tempC
   prevHumidityPct = humidityPct
 }
@@ -488,6 +811,10 @@ function setModeButtons(mode) {
     envModeMonthBtn.classList.toggle('env-mode-btn--active', mode === 'month')
     envModeMonthBtn.setAttribute('aria-selected', mode === 'month' ? 'true' : 'false')
   }
+  if (envModeRangeBtn) {
+    envModeRangeBtn.classList.toggle('env-mode-btn--active', mode === 'range')
+    envModeRangeBtn.setAttribute('aria-selected', mode === 'range' ? 'true' : 'false')
+  }
 }
 
 function applyEnvPayload(payload) {
@@ -500,37 +827,65 @@ function applyEnvPayload(payload) {
   }
 
   lastEnvPayload = payload
+  if (payload.thresholds) applyThresholds(payload.thresholds)
+
+  const activeAlarms = payload.alarms || []
+  checkAlarmSound(activeAlarms)
+
+  if (envPanelEl) {
+    const hasAlarm = activeAlarms.some((a) => a.state === 'raised')
+    envPanelEl.classList.toggle('env-panel--alarm', hasAlarm)
+  }
+
   if (!envVisible()) return
 
   const latest = payload.latest
+  const warnMin = payload.staleWarnMin != null ? payload.staleWarnMin : 5
+  const alarmMin = payload.staleAlarmMin != null ? payload.staleAlarmMin : 15
+
   if (latest) {
-    applyGaugeReadings(latest.tempC, latest.humidityPct)
+    applyGaugeReadings(latest.tempC, latest.humidityPct, activeAlarms)
     const m = minutesSince(latest.ts)
     if (envUpdatedEl) {
       envUpdatedEl.textContent =
         m === null ? '—' : m === 0 ? '방금 갱신' : `${m}분 전 갱신`
     }
   } else {
-    applyGaugeReadings(NaN, NaN)
+    applyGaugeReadings(NaN, NaN, activeAlarms)
     if (envUpdatedEl) envUpdatedEl.textContent = '수신 대기'
   }
 
   if (envStatusEl) {
+    const sensorAlarm = activeAlarms.some(
+      (a) => a.metric === 'sensor' && a.state === 'raised',
+    )
+    const metricAlarm = activeAlarms.some(
+      (a) => (a.metric === 'temp' || a.metric === 'hum') && a.state === 'raised',
+    )
+    const staleMin = latest ? minutesSince(latest.ts) : null
+
     if (!latest) {
       envStatusEl.textContent = '센서 데이터 없음'
       envStatusEl.className = 'env-panel__status env-panel__status--warn'
+    } else if (sensorAlarm || (staleMin != null && staleMin >= alarmMin)) {
+      envStatusEl.textContent = '센서 단절 경보'
+      envStatusEl.className = 'env-panel__status env-panel__status--alarm'
+    } else if (metricAlarm) {
+      envStatusEl.textContent = '한계 경보'
+      envStatusEl.className = 'env-panel__status env-panel__status--alarm'
+    } else if (staleMin != null && staleMin >= warnMin) {
+      envStatusEl.textContent = '센서 수신 지연'
+      envStatusEl.className = 'env-panel__status env-panel__status--warn'
     } else {
-      const stale = minutesSince(latest.ts) != null && minutesSince(latest.ts) > 5
-      envStatusEl.textContent = stale ? '센서 수신 지연' : '실시간'
-      envStatusEl.className = stale
-        ? 'env-panel__status env-panel__status--warn'
-        : 'env-panel__status env-panel__status--ok'
+      envStatusEl.textContent = '실시간'
+      envStatusEl.className = 'env-panel__status env-panel__status--ok'
     }
   }
 
   if (chartViewMode === 'day') {
     updateChartTitleDay()
     updateDayChart(payload.history || [])
+    renderStats(payload.stats, '오늘')
   }
 }
 
@@ -543,16 +898,12 @@ async function switchChartMode(mode) {
     createChart('day')
     if (lastEnvPayload && lastEnvPayload.ok) {
       updateDayChart(lastEnvPayload.history || [])
+      renderStats(lastEnvPayload.stats, '오늘')
     }
+  } else if (mode === 'range') {
+    initRangeDates()
+    await loadRangeChart()
   } else {
-    const now = new Date()
-    if (
-      selectedMonthYear === now.getFullYear() &&
-      selectedMonthNum === now.getMonth() + 1 &&
-      !monthChartMeta
-    ) {
-      /* keep current month */
-    }
     await fetchAvailableMonths()
     await loadMonthChart(selectedMonthYear, selectedMonthNum)
   }
@@ -628,6 +979,7 @@ async function applyCalibration() {
     }
     await fetchEnvSnapshot()
     if (chartViewMode === 'month') await loadMonthChart()
+    if (chartViewMode === 'range') await loadRangeChart()
   } catch (e) {
     if (envCalStatusEl) {
       envCalStatusEl.textContent = e.message || '적용 실패'
@@ -697,6 +1049,30 @@ if (envModeDayBtn) {
 if (envModeMonthBtn) {
   envModeMonthBtn.addEventListener('click', () => void switchChartMode('month'))
 }
+if (envModeRangeBtn) {
+  envModeRangeBtn.addEventListener('click', () => void switchChartMode('range'))
+}
+if (envRangeApplyBtn) {
+  envRangeApplyBtn.addEventListener('click', () => void loadRangeChart())
+}
+if (envRangeWeekBtn) {
+  envRangeWeekBtn.addEventListener('click', () => {
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 6 * 86400000)
+    if (envRangeFromEl) envRangeFromEl.value = toIsoDate(weekAgo)
+    if (envRangeToEl) envRangeToEl.value = toIsoDate(now)
+    void loadRangeChart()
+  })
+}
+if (envExportBtn) {
+  envExportBtn.addEventListener('click', exportCsv)
+}
+if (envAlarmRefreshBtn) {
+  envAlarmRefreshBtn.addEventListener('click', () => void loadAlarmHistory())
+}
+if (kioskBtn) {
+  kioskBtn.addEventListener('click', toggleKiosk)
+}
 if (envMonthPrevBtn) {
   envMonthPrevBtn.addEventListener('click', () => shiftSelectedMonth(-1))
 }
@@ -753,5 +1129,7 @@ try {
   console.error('[env] chart init failed', e)
 }
 void fetchAvailableMonths()
+initRangeDates()
 void fetchEnvSnapshot()
+void loadAlarmHistory()
 connectEnvStream()

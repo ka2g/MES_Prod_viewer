@@ -637,8 +637,8 @@ body {
 /* SMT 생산실 온습도 패널 */
 .env-panel {
   max-width: var(--layout-max);
-  margin: 24px auto 40px;
-  padding: 20px clamp(16px, 2.5vw, 40px);
+  margin: 16px auto 24px;
+  padding: 16px clamp(16px, 2.5vw, 32px);
   background: var(--card-bg);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow);
@@ -650,7 +650,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .env-panel__title {
@@ -688,26 +688,60 @@ body {
 .env-panel__gauges {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .env-gauge {
-  padding: 16px 20px;
+  padding: 10px 14px;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.env-gauge__row {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 72px;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .env-gauge__main {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.env-gauge__stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.env-gauge__stats.hidden {
+  display: none;
+}
+
+.env-gauge__stats-line {
+  font-weight: 600;
+}
+
+.env-gauge__stats-breach {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: #c2410c;
+  font-size: 0.72rem;
 }
 
 .env-gauge__trend {
@@ -747,9 +781,10 @@ body {
 }
 
 .env-gauge__value {
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-size: clamp(1.45rem, 2.8vw, 1.9rem);
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .env-gauge--temp .env-gauge__value {
@@ -762,17 +797,17 @@ body {
 
 .env-panel__chart-wrap {
   position: relative;
-  height: min(320px, 42vh);
-  min-height: 220px;
+  height: min(240px, 30vh);
+  min-height: 160px;
 }
 
 .env-panel__chart-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .env-panel__chart-title {
@@ -1036,4 +1071,202 @@ body {
 
 .env-modal__status--err {
   color: #dc2626;
+}
+
+/* 온습도 — 게이지 상태 / 통계 / 경보 / 기간 / 키오스크 */
+.env-panel__status--alarm {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.env-panel--alarm {
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.35), var(--shadow);
+}
+
+.env-gauge__state {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.env-gauge__state.hidden {
+  display: none;
+}
+
+.env-gauge--ok {
+  border-color: #bbf7d0;
+}
+
+.env-gauge--ok .env-gauge__state {
+  color: var(--ok);
+  background: #ecfdf3;
+}
+
+.env-gauge--warn {
+  border-color: #fed7aa;
+  background: linear-gradient(135deg, #fff7ed 0%, #fff 100%) !important;
+}
+
+.env-gauge--warn .env-gauge__state {
+  color: #c2410c;
+  background: #ffedd5;
+}
+
+.env-gauge--alarm {
+  border-color: #fecaca;
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 100%) !important;
+  animation: env-pulse 2s ease-in-out infinite;
+}
+
+.env-gauge--alarm .env-gauge__state {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+@keyframes env-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.08);
+  }
+}
+
+.env-range-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.env-range-nav.hidden {
+  display: none;
+}
+
+.env-range-nav__date {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 0.78rem;
+}
+
+.env-range-nav__sep {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.env-range-nav__btn {
+  width: auto !important;
+  padding: 0 10px !important;
+  font-size: 0.76rem !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.env-alarms {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.env-alarms__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.env-alarms__title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.env-alarms__sub {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.env-alarm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.env-alarm-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.env-alarm-item {
+  display: flex;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  margin-bottom: 2px;
+}
+
+.env-alarm-item--raised {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.env-alarm-item--cleared {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.env-alarm-item__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.env-alarm-item__msg {
+  font-weight: 500;
+}
+
+/* 키오스크(전체화면) — SMT 온습도 패널 강조 */
+body.env-kiosk .topbar,
+body.env-kiosk #lineList,
+body.env-kiosk #hiddenLinesBar,
+body.env-kiosk #emptyState,
+body.env-kiosk #alertBar {
+  display: none !important;
+}
+
+body.env-kiosk .page {
+  padding-top: 12px;
+}
+
+body.env-kiosk .env-panel {
+  margin: 0 auto;
+  min-height: calc(100vh - 24px);
+}
+
+body.env-kiosk .env-gauge__value {
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+}
+
+body.env-kiosk .env-panel__chart-wrap {
+  height: min(480px, 50vh);
+}
+
+@media (max-width: 720px) {
+  .env-range-nav {
+    width: 100%;
+  }
 }

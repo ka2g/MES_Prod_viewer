@@ -37,6 +37,9 @@
             <span class="dot dot--green"></span>
             실시간 연동
           </span>
+          <button type="button" id="kioskBtn" class="topbar-settings-btn" title="전체화면(키오스크)">
+            전체화면
+          </button>
           <button type="button" id="envSettingsBtn" class="topbar-settings-btn" title="온습도 설정">
             설정
           </button>
@@ -67,22 +70,44 @@
           </div>
         </div>
         <div class="env-panel__gauges">
-          <div class="env-gauge env-gauge--temp">
-            <div class="env-gauge__main">
-              <div id="envTempVal" class="env-gauge__value">—</div>
-              <span id="envTempTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+          <div id="envTempGauge" class="env-gauge env-gauge--temp">
+            <div class="env-gauge__row">
+              <div class="env-gauge__main">
+                <div id="envTempVal" class="env-gauge__value">—</div>
+                <span id="envTempTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+              </div>
+              <span id="envTempState" class="env-gauge__state hidden"></span>
+            </div>
+            <div id="envTempStats" class="env-gauge__stats hidden">
+              <span id="envStatTemp" class="env-gauge__stats-line">—</span>
+              <span id="envStatTempBreach" class="env-gauge__stats-breach"></span>
             </div>
           </div>
-          <div class="env-gauge env-gauge--hum">
-            <div class="env-gauge__main">
-              <div id="envHumVal" class="env-gauge__value">—</div>
-              <span id="envHumTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+          <div id="envHumGauge" class="env-gauge env-gauge--hum">
+            <div class="env-gauge__row">
+              <div class="env-gauge__main">
+                <div id="envHumVal" class="env-gauge__value">—</div>
+                <span id="envHumTrend" class="env-gauge__trend env-gauge__trend--flat hidden" aria-hidden="true"></span>
+              </div>
+              <span id="envHumState" class="env-gauge__state hidden"></span>
+            </div>
+            <div id="envHumStats" class="env-gauge__stats hidden">
+              <span id="envStatHum" class="env-gauge__stats-line">—</span>
+              <span id="envStatHumBreach" class="env-gauge__stats-breach"></span>
             </div>
           </div>
         </div>
         <div class="env-panel__chart-toolbar">
           <p id="envChartTitle" class="env-panel__chart-title">오늘 · 10분 간격</p>
           <div class="env-chart-toolbar-right">
+            <div id="envRangeNav" class="env-range-nav hidden" aria-label="기간 선택">
+              <input type="date" id="envRangeFrom" class="env-range-nav__date" aria-label="시작일" />
+              <span class="env-range-nav__sep">~</span>
+              <input type="date" id="envRangeTo" class="env-range-nav__date" aria-label="종료일" />
+              <button type="button" id="envRangeApply" class="env-month-nav__btn env-range-nav__btn">조회</button>
+              <button type="button" id="envRangeWeek" class="env-month-nav__btn env-range-nav__btn">최근 7일</button>
+              <button type="button" id="envExportBtn" class="env-month-nav__btn env-range-nav__btn" title="CSV 내려받기">CSV</button>
+            </div>
             <div id="envMonthNav" class="env-month-nav hidden" aria-label="월 선택">
               <button type="button" id="envMonthPrev" class="env-month-nav__btn" title="이전 달">◀</button>
               <select id="envMonthSelect" class="env-month-nav__select" aria-label="조회 월"></select>
@@ -95,11 +120,23 @@
               <button type="button" id="envModeMonth" class="env-mode-btn" role="tab" aria-selected="false">
                 월간
               </button>
+              <button type="button" id="envModeRange" class="env-mode-btn" role="tab" aria-selected="false">
+                기간
+              </button>
             </div>
           </div>
         </div>
         <div class="env-panel__chart-wrap">
           <canvas id="envChart" aria-label="SMT 현장 온습도 차트"></canvas>
+        </div>
+        <div class="env-alarms">
+          <div class="env-alarms__head">
+            <h3 class="env-alarms__title">경보 이력 <span class="env-alarms__sub">(최근 7일)</span></h3>
+            <button type="button" id="envAlarmRefresh" class="env-month-nav__btn env-range-nav__btn">새로고침</button>
+          </div>
+          <ul id="envAlarmList" class="env-alarm-list">
+            <li class="env-alarm-empty">불러오는 중…</li>
+          </ul>
         </div>
       </section>
     </main>

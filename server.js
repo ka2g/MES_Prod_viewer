@@ -12,6 +12,8 @@ const express = require('express')
 const mesRepository = require('./mesRepository')
 const { attachLineStatus } = require('./lineActivity')
 const envStore = require('./envStore')
+const alarmStore = require('./alarmStore')
+const notifier = require('./notifier')
 
 const PORT = parseInt(process.env.PORT || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
@@ -39,6 +41,40 @@ const ENV_RETENTION_DAYS = Math.max(
 )
 const ENV_SETTINGS_PIN = String(process.env.ENV_SETTINGS_PIN || 'smt1234').trim()
 
+function numEnv(name, def) {
+  const v = parseFloat(process.env[name])
+  return Number.isFinite(v) ? v : def
+}
+
+const ENV_TEMP_MIN = numEnv('ENV_TEMP_MIN', 22)
+const ENV_TEMP_MAX = numEnv('ENV_TEMP_MAX', 28)
+const ENV_HUM_MIN = numEnv('ENV_HUM_MIN', 40)
+const ENV_HUM_MAX = numEnv('ENV_HUM_MAX', 60)
+const ENV_ALARM_SUSTAIN_MIN = Math.max(0, numEnv('ENV_ALARM_SUSTAIN_MIN', 3))
+const ENV_STALE_WARN_MIN = Math.max(1, numEnv('ENV_STALE_WARN_MIN', 5))
+const ENV_STALE_ALARM_MIN = Math.max(ENV_STALE_WARN_MIN, numEnv('ENV_STALE_ALARM_MIN', 15))
+
+alarmStore.configure({
+  tempMin: ENV_TEMP_MIN,
+  tempMax: ENV_TEMP_MAX,
+  humMin: ENV_HUM_MIN,
+  humMax: ENV_HUM_MAX,
+  sustainMs: ENV_ALARM_SUSTAIN_MIN * 60 * 1000,
+  staleAlarmMs: ENV_STALE_ALARM_MIN * 60 * 1000,
+})
+
+notifier.configure({
+  webhookUrl: String(process.env.ENV_ALARM_WEBHOOK_URL || '').trim(),
+  telegramToken: String(process.env.ENV_TELEGRAM_BOT_TOKEN || '').trim(),
+  telegramChatId: String(process.env.ENV_TELEGRAM_CHAT_ID || '').trim(),
+})
+
+function startOfTodayMs() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
 const app = express()
 app.disable('x-powered-by')
 app.use(express.json())
@@ -54,16 +90,34 @@ function clampNum(v, min, max) {
   return Math.min(max, Math.max(min, v))
 }
 
+const ENV_THRESHOLDS = {
+  tempMin: ENV_TEMP_MIN,
+  tempMax: ENV_TEMP_MAX,
+  humMin: ENV_HUM_MIN,
+  humMax: ENV_HUM_MAX,
+}
+
 function buildEnvPayload() {
   let latest = envStore.getLatest(ENV_DEVICE_ID)
   if (!latest) latest = envStore.getLatestAny()
   const historyDeviceId = latest ? latest.deviceId : ENV_DEVICE_ID
   const history = envStore.getTodayHistory10Min(historyDeviceId, ENV_HISTORY_BUCKET_MIN)
+  const stats = envStore.getStats(
+    historyDeviceId,
+    startOfTodayMs(),
+    Date.now(),
+    ENV_THRESHOLDS,
+  )
   return {
     ok: true,
     fetchedAt: new Date().toISOString(),
     deviceId: ENV_DEVICE_ID,
     chartMode: 'day',
+    thresholds: ENV_THRESHOLDS,
+    staleWarnMin: ENV_STALE_WARN_MIN,
+    staleAlarmMin: ENV_STALE_ALARM_MIN,
+    alarms: alarmStore.getActiveAlarms(historyDeviceId),
+    stats,
     latest: latest
       ? {
           ...latest,
@@ -176,6 +230,17 @@ app.post('/api/env/ingest', (req, res) => {
       `[env/ingest] ${deviceId} T=${tempC} RH=${humidityPct}% ts=${new Date(ts).toISOString()}`,
     )
 
+    let events = []
+    try {
+      events = alarmStore.evaluateReading(deviceId, ts, tempC, humidityPct)
+    } catch (e) {
+      console.warn('[env/alarm] evaluate failed:', e.message)
+    }
+    for (const ev of events) {
+      console.log(`[env/alarm] ${ev.metric} ${ev.kind} ${ev.state} value=${ev.value ?? ''}`)
+      notifier.notify(ev)
+    }
+
     res.json({ ok: true, deviceId, ts })
     broadcastEnvSse()
   } catch (err) {
@@ -287,6 +352,81 @@ app.get('/api/env/month', (req, res) => {
     })
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message, history: [] })
+  }
+})
+
+function resolveEnvDeviceId() {
+  let latest = envStore.getLatest(ENV_DEVICE_ID)
+  if (!latest) latest = envStore.getLatestAny()
+  return latest ? latest.deviceId : ENV_DEVICE_ID
+}
+
+function parseRange(req) {
+  const now = Date.now()
+  let to = Date.parse(String(req.query.to || ''))
+  if (!Number.isFinite(to)) to = now
+  let from = Date.parse(String(req.query.from || ''))
+  if (!Number.isFinite(from)) from = to - 24 * 3600 * 1000
+  if (from > to) [from, to] = [to, from]
+  return { from, to }
+}
+
+app.get('/api/env/alarms', (req, res) => {
+  try {
+    const { from, to } = parseRange(req)
+    const deviceId = resolveEnvDeviceId()
+    const alarms = alarmStore.readAlarms(deviceId, from, to)
+    res.json({ ok: true, deviceId, from, to, alarms })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, alarms: [] })
+  }
+})
+
+app.get('/api/env/range', (req, res) => {
+  try {
+    const { from, to } = parseRange(req)
+    const bucket = parseInt(String(req.query.bucket || ''), 10)
+    const deviceId = resolveEnvDeviceId()
+    const range = envStore.getRange(deviceId, from, to, Number.isFinite(bucket) ? bucket : 0)
+    const stats = envStore.getStats(deviceId, from, to, ENV_THRESHOLDS)
+    res.json({
+      ok: true,
+      deviceId,
+      chartMode: 'range',
+      thresholds: ENV_THRESHOLDS,
+      ...range,
+      stats,
+    })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, history: [] })
+  }
+})
+
+app.get('/api/env/export', (req, res) => {
+  try {
+    const { from, to } = parseRange(req)
+    const deviceId = resolveEnvDeviceId()
+    const rows = envStore.getRawRange(deviceId, from, to)
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmt = (ms) => {
+      const d = new Date(ms)
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    }
+    const fnameDay = (ms) => {
+      const d = new Date(ms)
+      return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
+    }
+    let csv = 'recorded_at,device_id,temp_c,humidity_pct\n'
+    for (const r of rows) {
+      csv += `${fmt(r.ts)},${r.deviceId},${r.tempC},${r.humidityPct}\n`
+    }
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="env-${deviceId}-${fnameDay(from)}_${fnameDay(to)}.csv"`,
+    })
+    res.send('\uFEFF' + csv)
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message })
   }
 })
 
@@ -429,6 +569,23 @@ setInterval(() => {
   broadcastEnvSse()
 }, ENV_REFRESH_MS).unref?.()
 
+/* 센서 단절 watchdog: 마지막 수신 이후 경과로 단절 경보 */
+setInterval(() => {
+  try {
+    const latest = envStore.getLatest(ENV_DEVICE_ID) || envStore.getLatestAny()
+    if (!latest) return
+    const events = alarmStore.checkSensorWatchdog(latest.deviceId, Date.now(), latest.ts)
+    if (events.length === 0) return
+    for (const ev of events) {
+      console.log(`[env/alarm] sensor ${ev.state}`)
+      notifier.notify(ev)
+    }
+    broadcastEnvSse()
+  } catch (e) {
+    console.warn('[env/watchdog]', e.message)
+  }
+}, 60 * 1000).unref?.()
+
 if (ENV_RETENTION_DAYS > 0) {
   try {
     const n = envStore.purgeOlderThan(ENV_RETENTION_DAYS)
@@ -436,9 +593,13 @@ if (ENV_RETENTION_DAYS > 0) {
   } catch (e) {
     console.warn('[env] retention purge skipped:', e.message)
   }
+  try {
+    alarmStore.purgeOlderThan(ENV_RETENTION_DAYS)
+  } catch (_) {}
   setInterval(() => {
     try {
       envStore.purgeOlderThan(ENV_RETENTION_DAYS)
+      alarmStore.purgeOlderThan(ENV_RETENTION_DAYS)
     } catch (_) {}
   }, 24 * 3600 * 1000).unref?.()
 }

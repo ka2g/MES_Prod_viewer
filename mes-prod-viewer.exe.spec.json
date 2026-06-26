@@ -11,7 +11,9 @@
     "./server.js",
     "./mesRepository.js",
     "./lineActivity.js",
-    "./envStore.js"
+    "./envStore.js",
+    "./alarmStore.js",
+    "./notifier.js"
   ],
   "includedAssets": [
     "./public/**/*",

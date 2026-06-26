@@ -305,6 +305,113 @@ function getHistory(deviceId, hours, bucketMinutes) {
     }))
 }
 
+/** [fromMs, toMs] 범위의 raw 행 (jsonl 기준, 시각 오름차순) */
+function readBetween(deviceId, fromMs, toMs) {
+  const out = []
+  for (const f of listDayFiles()) {
+    const dayStr = f.slice('readings-'.length, -'.jsonl'.length)
+    const dayStart = new Date(`${dayStr}T00:00:00`).getTime()
+    if (dayStart + 24 * 3600 * 1000 < fromMs) continue
+    if (dayStart > toMs) continue
+
+    const full = path.join(dataDir(), f)
+    let text
+    try {
+      text = fs.readFileSync(full, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      const r = parseLine(line)
+      if (!r || r.deviceId !== deviceId || r.ts < fromMs || r.ts > toMs) continue
+      out.push(r)
+    }
+  }
+  out.sort((a, b) => a.ts - b.ts)
+  return out
+}
+
+/** 임의 기간 집계. 범위 길이에 따라 버킷(분) 자동 선택(미지정 시) */
+function getRange(deviceId, fromMs, toMs, bucketMinutes) {
+  const spanMs = Math.max(0, toMs - fromMs)
+  let bucketMin = bucketMinutes
+  if (!bucketMin || bucketMin < 1) {
+    const spanHours = spanMs / 3600000
+    if (spanHours <= 6) bucketMin = 5
+    else if (spanHours <= 24) bucketMin = 10
+    else if (spanHours <= 24 * 3) bucketMin = 30
+    else if (spanHours <= 24 * 14) bucketMin = 60
+    else bucketMin = 180
+  }
+  const rows = readBetween(deviceId, fromMs, toMs)
+  const bucketMs = bucketMin * 60 * 1000
+  const buckets = new Map()
+  for (const r of rows) {
+    const key = Math.floor(r.ts / bucketMs) * bucketMs
+    let b = buckets.get(key)
+    if (!b) {
+      b = { ts: key, tempSum: 0, humSum: 0, n: 0 }
+      buckets.set(key, b)
+    }
+    b.tempSum += r.tempC
+    b.humSum += r.humidityPct
+    b.n += 1
+  }
+  const history = [...buckets.values()]
+    .sort((a, b) => a.ts - b.ts)
+    .map((b) => ({
+      ts: b.ts,
+      tempC: Math.round((b.tempSum / b.n) * 10) / 10,
+      humidityPct: Math.round((b.humSum / b.n) * 10) / 10,
+    }))
+  return { fromMs, toMs, bucketMinutes: bucketMin, history }
+}
+
+/** 기간 통계: min/max/avg + 한계 이탈 비율(수신 건수 기준) */
+function getStats(deviceId, fromMs, toMs, limits) {
+  const rows = readBetween(deviceId, fromMs, toMs)
+  if (rows.length === 0) {
+    return { count: 0, temp: null, hum: null }
+  }
+  const lim = limits || {}
+  let tMin = Infinity
+  let tMax = -Infinity
+  let tSum = 0
+  let hMin = Infinity
+  let hMax = -Infinity
+  let hSum = 0
+  let tBreach = 0
+  let hBreach = 0
+  for (const r of rows) {
+    tMin = Math.min(tMin, r.tempC)
+    tMax = Math.max(tMax, r.tempC)
+    tSum += r.tempC
+    hMin = Math.min(hMin, r.humidityPct)
+    hMax = Math.max(hMax, r.humidityPct)
+    hSum += r.humidityPct
+    if (lim.tempMin != null && lim.tempMax != null) {
+      if (r.tempC < lim.tempMin || r.tempC > lim.tempMax) tBreach += 1
+    }
+    if (lim.humMin != null && lim.humMax != null) {
+      if (r.humidityPct < lim.humMin || r.humidityPct > lim.humMax) hBreach += 1
+    }
+  }
+  const n = rows.length
+  const r1 = (v) => Math.round(v * 10) / 10
+  const pct = (c) => Math.round((c / n) * 1000) / 10
+  return {
+    count: n,
+    temp: { min: r1(tMin), max: r1(tMax), avg: r1(tSum / n), breachPct: pct(tBreach) },
+    hum: { min: r1(hMin), max: r1(hMax), avg: r1(hSum / n), breachPct: pct(hBreach) },
+  }
+}
+
+/** CSV 내보내기용 raw 행 (보정 적용된 저장값) */
+function getRawRange(deviceId, fromMs, toMs) {
+  return readBetween(deviceId, fromMs, toMs)
+}
+
 const CALIBRATION_FILE = () => path.join(dataDir(), 'calibration.json')
 
 function round1(v) {
@@ -441,6 +548,9 @@ module.exports = {
   getLatestAny,
   getHistory,
   getTodayHistory10Min,
+  getRange,
+  getStats,
+  getRawRange,
   getMonthDailyFromCsv,
   listAvailableMonths,
   listBrowsableMonths,
