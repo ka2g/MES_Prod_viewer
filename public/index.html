@@ -69,7 +69,7 @@
             <span id="envUpdated" class="env-panel__updated">—</span>
           </div>
         </div>
-        <div class="env-panel__gauges">
+        <div class="env-panel__gauges" id="envGauges">
           <div id="envTempGauge" class="env-gauge env-gauge--temp">
             <div class="env-gauge__row">
               <div class="env-gauge__main">
@@ -94,6 +94,26 @@
             <div id="envHumStats" class="env-gauge__stats hidden">
               <span id="envStatHum" class="env-gauge__stats-line">—</span>
               <span id="envStatHumBreach" class="env-gauge__stats-breach"></span>
+            </div>
+          </div>
+          <div id="envOutdoor" class="env-outdoor hidden" aria-label="실외 날씨">
+            <div class="env-outdoor__head">
+              <span id="envOutdoorLoc" class="env-outdoor__loc">실외 · 안산시 원시동</span>
+              <span id="envOutdoorUpdated" class="env-outdoor__updated">—</span>
+            </div>
+            <div class="env-outdoor__body">
+              <div class="env-outdoor__main">
+                <div id="envOutdoorIcon" class="env-outdoor__icon" aria-hidden="true"></div>
+                <div class="env-outdoor__metrics">
+                  <div id="envOutdoorWeather" class="env-outdoor__weather">—</div>
+                  <div class="env-outdoor__vals">
+                    <span id="envOutdoorTemp" class="env-outdoor__temp">—</span>
+                    <span id="envOutdoorFeels" class="env-outdoor__feels hidden">—</span>
+                    <span id="envOutdoorHum" class="env-outdoor__hum">—</span>
+                  </div>
+                </div>
+              </div>
+              <div id="envOutdoorForecast" class="env-outdoor__forecast"></div>
             </div>
           </div>
         </div>

@@ -49,6 +49,16 @@ const envExportBtn = document.getElementById('envExportBtn')
 const envAlarmListEl = document.getElementById('envAlarmList')
 const envAlarmRefreshBtn = document.getElementById('envAlarmRefresh')
 const kioskBtn = document.getElementById('kioskBtn')
+const envGaugesEl = document.getElementById('envGauges')
+const envOutdoorEl = document.getElementById('envOutdoor')
+const envOutdoorLocEl = document.getElementById('envOutdoorLoc')
+const envOutdoorUpdatedEl = document.getElementById('envOutdoorUpdated')
+const envOutdoorIconEl = document.getElementById('envOutdoorIcon')
+const envOutdoorWeatherEl = document.getElementById('envOutdoorWeather')
+const envOutdoorTempEl = document.getElementById('envOutdoorTemp')
+const envOutdoorFeelsEl = document.getElementById('envOutdoorFeels')
+const envOutdoorHumEl = document.getElementById('envOutdoorHum')
+const envOutdoorForecastEl = document.getElementById('envOutdoorForecast')
 
 const SETTINGS_PIN = 'smt1234'
 const CAL_STEP = 0.1
@@ -568,6 +578,121 @@ function shiftSelectedMonth(direction) {
   void loadMonthChart(next.year, next.month)
 }
 
+function wmoIconKind(code) {
+  const c = parseInt(String(code), 10)
+  if (!Number.isFinite(c)) return 'unknown'
+  if (c === 0) return 'clear'
+  if (c === 1) return 'mostly-clear'
+  if (c === 2) return 'partly-cloudy'
+  if (c === 3) return 'cloudy'
+  if (c === 45 || c === 48) return 'fog'
+  if (c >= 51 && c <= 57) return 'drizzle'
+  if (c >= 61 && c <= 67) return 'rain'
+  if (c >= 71 && c <= 77) return 'snow'
+  if (c >= 80 && c <= 82) return 'showers'
+  if (c >= 85 && c <= 86) return 'snow-showers'
+  if (c >= 95 && c <= 99) return 'thunder'
+  return 'unknown'
+}
+
+const WEATHER_ICONS = {
+  clear:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="11" fill="#FBBF24"/><g stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"><line x1="24" y1="4" x2="24" y2="10"/><line x1="24" y1="38" x2="24" y2="44"/><line x1="4" y1="24" x2="10" y2="24"/><line x1="38" y1="24" x2="44" y2="24"/><line x1="9.9" y1="9.9" x2="14.1" y2="14.1"/><line x1="33.9" y1="33.9" x2="38.1" y2="38.1"/><line x1="9.9" y1="38.1" x2="14.1" y2="33.9"/><line x1="33.9" y1="14.1" x2="38.1" y2="9.9"/></g></svg>',
+  'mostly-clear':
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="34" cy="14" r="8" fill="#FBBF24"/><g stroke="#F59E0B" stroke-width="2" stroke-linecap="round"><line x1="34" y1="2" x2="34" y2="5"/><line x1="42" y1="14" x2="45" y2="14"/><line x1="39.7" y1="8.3" x2="41.8" y2="6.2"/></g><path d="M14 32h22a8 8 0 0 0 1.2-15.9A10 10 0 0 0 18 22a6 6 0 0 0-1 11.9Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/></svg>',
+  'partly-cloudy':
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="18" r="9" fill="#FBBF24"/><g stroke="#F59E0B" stroke-width="2" stroke-linecap="round"><line x1="16" y1="4" x2="16" y2="7"/><line x1="4" y1="18" x2="7" y2="18"/><line x1="7.8" y1="11.8" x2="9.9" y2="9.7"/></g><path d="M18 34h20a7 7 0 0 0 .9-13.9A9 9 0 0 0 22 18a5.5 5.5 0 0 0-1.1 10.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/></svg>',
+  cloudy:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M12 32h26a8 8 0 0 0 1.3-15.9A11 11 0 0 0 16 14a7 7 0 0 0-2 12.9Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/></svg>',
+  fog:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M10 20h28a6 6 0 0 0 .8-12A9 9 0 0 0 14 6a5 5 0 0 0-1 10Z" fill="#D1D5DB" stroke="#9CA3AF" stroke-width="1.5"/><g stroke="#6B7280" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="30" x2="40" y2="30"/><line x1="12" y1="36" x2="36" y2="36"/><line x1="10" y1="42" x2="38" y2="42"/></g></svg>',
+  drizzle:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M12 26h24a7 7 0 0 0 1-13.9A10 10 0 0 0 16 8a6 6 0 0 0-1.2 10.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/><g fill="#60A5FA"><circle cx="18" cy="34" r="1.8"/><circle cx="26" cy="38" r="1.8"/><circle cx="30" cy="32" r="1.8"/></g></svg>',
+  rain:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M12 24h24a7 7 0 0 0 1-13.9A10 10 0 0 0 16 6a6 6 0 0 0-1.2 10.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/><g stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="30" x2="16" y2="38"/><line x1="26" y1="30" x2="24" y2="38"/><line x1="34" y1="30" x2="32" y2="38"/></g></svg>',
+  snow:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M12 24h24a7 7 0 0 0 1-13.9A10 10 0 0 0 16 6a6 6 0 0 0-1.2 10.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/><g stroke="#93C5FD" stroke-width="2" stroke-linecap="round"><line x1="24" y1="30" x2="24" y2="42"/><line x1="18" y1="33" x2="30" y2="39"/><line x1="30" y1="33" x2="18" y2="39"/></g></svg>',
+  showers:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M10 22h28a8 8 0 0 0 1.2-15.9A11 11 0 0 0 14 4a7 7 0 0 0-1.4 12.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/><g stroke="#2563EB" stroke-width="2.5" stroke-linecap="round"><line x1="16" y1="28" x2="14" y2="36"/><line x1="24" y1="28" x2="22" y2="36"/><line x1="32" y1="28" x2="30" y2="36"/><line x1="20" y1="32" x2="18" y2="40"/><line x1="28" y1="32" x2="26" y2="40"/></g></svg>',
+  'snow-showers':
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M10 22h28a8 8 0 0 0 1.2-15.9A11 11 0 0 0 14 4a7 7 0 0 0-1.4 12.8Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1.5"/><g stroke="#93C5FD" stroke-width="2" stroke-linecap="round"><line x1="18" y1="30" x2="18" y2="36"/><line x1="15" y1="33" x2="21" y2="33"/><line x1="26" y1="32" x2="26" y2="38"/><line x1="23" y1="35" x2="29" y2="35"/><line x1="34" y1="30" x2="34" y2="36"/><line x1="31" y1="33" x2="37" y2="33"/></g></svg>',
+  thunder:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M12 24h24a7 7 0 0 0 1-13.9A10 10 0 0 0 16 6a6 6 0 0 0-1.2 10.8Z" fill="#9CA3AF" stroke="#6B7280" stroke-width="1.5"/><path d="M26 28h-6l4 8h-5l7 10 1-9h5l-6-9Z" fill="#FBBF24" stroke="#F59E0B" stroke-width="1"/></svg>',
+  unknown:
+    '<svg class="wicon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M14 32h22a8 8 0 0 0 1.2-15.9A10 10 0 0 0 18 22a6 6 0 0 0-1 11.9Z" fill="#F3F4F6" stroke="#D1D5DB" stroke-width="1.5"/></svg>',
+}
+
+function weatherIconHtml(code) {
+  const kind = wmoIconKind(code)
+  return WEATHER_ICONS[kind] || WEATHER_ICONS.unknown
+}
+
+function wmoLabel(code) {
+  const c = parseInt(String(code), 10)
+  if (!Number.isFinite(c)) return '—'
+  if (c === 0) return '맑음'
+  if (c === 1) return '대체로 맑음'
+  if (c === 2) return '구름 조금'
+  if (c === 3) return '흐림'
+  if (c === 45 || c === 48) return '안개'
+  if (c >= 51 && c <= 57) return '이슬비'
+  if (c >= 61 && c <= 67) return '비'
+  if (c >= 71 && c <= 77) return '눈'
+  if (c >= 80 && c <= 82) return '소나기'
+  if (c >= 85 && c <= 86) return '눈보라'
+  if (c >= 95 && c <= 99) return '뇌우'
+  return '—'
+}
+
+function renderOutdoor(outdoor) {
+  if (!envOutdoorEl) return
+  const visible = !!(outdoor && outdoor.current)
+  if (envGaugesEl) envGaugesEl.classList.toggle('env-panel__gauges--outdoor', visible)
+  if (!visible) {
+    envOutdoorEl.classList.add('hidden')
+    return
+  }
+  envOutdoorEl.classList.remove('hidden')
+  const loc = outdoor.location || '실외'
+  if (envOutdoorLocEl) envOutdoorLocEl.textContent = `실외 · ${loc}`
+
+  const cur = outdoor.current
+  const label = cur.weatherLabel || wmoLabel(cur.weatherCode)
+  if (envOutdoorIconEl) envOutdoorIconEl.innerHTML = weatherIconHtml(cur.weatherCode)
+  if (envOutdoorWeatherEl) envOutdoorWeatherEl.textContent = label
+  if (envOutdoorTempEl) envOutdoorTempEl.textContent = `${cur.tempC}℃`
+  if (envOutdoorFeelsEl) {
+    const feels = cur.feelsLikeC
+    if (feels != null && Number.isFinite(Number(feels))) {
+      envOutdoorFeelsEl.textContent = `체감 ${feels}℃`
+      envOutdoorFeelsEl.classList.remove('hidden')
+    } else {
+      envOutdoorFeelsEl.textContent = ''
+      envOutdoorFeelsEl.classList.add('hidden')
+    }
+  }
+  if (envOutdoorHumEl) envOutdoorHumEl.textContent = `${cur.humidityPct}%RH`
+
+  const tsRaw = outdoor.fetchedAt || outdoor.receivedAt
+  const tsMs =
+    typeof tsRaw === 'number' ? tsRaw : tsRaw ? new Date(tsRaw).getTime() : null
+  const m = minutesSince(Number.isFinite(tsMs) ? tsMs : null)
+  if (envOutdoorUpdatedEl) {
+    envOutdoorUpdatedEl.textContent =
+      m === null ? '—' : m === 0 ? '방금 갱신' : `${m}분 전`
+  }
+
+  if (!envOutdoorForecastEl) return
+  envOutdoorForecastEl.innerHTML = ''
+  for (const day of outdoor.forecast || []) {
+    const chip = document.createElement('div')
+    chip.className = 'env-outdoor__day'
+    const w = day.weatherLabel || wmoLabel(day.weatherCode)
+    chip.innerHTML = `<span class="env-outdoor__day-icon">${weatherIconHtml(day.weatherCode)}</span><span class="env-outdoor__day-body"><span class="env-outdoor__day-k">${day.label || day.date}</span><span class="env-outdoor__day-w">${w}</span></span><span class="env-outdoor__day-t">${day.tempMin}~${day.tempMax}℃</span>`
+    envOutdoorForecastEl.appendChild(chip)
+  }
+}
+
 function applyThresholds(t) {
   if (!t) return
   if (t.tempMin != null) thresholds.tempMin = t.tempMin
@@ -887,6 +1012,7 @@ function applyEnvPayload(payload) {
     updateDayChart(payload.history || [])
     renderStats(payload.stats, '오늘')
   }
+  renderOutdoor(payload.outdoor)
 }
 
 async function switchChartMode(mode) {

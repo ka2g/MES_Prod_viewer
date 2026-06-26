@@ -1,0 +1,12 @@
+{
+  "name": "outdoor-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Open-Meteo outdoor weather relay for MES (Windows 7 exe)",
+  "bin": "outdoor-relay.js",
+  "pkg": {
+    "scripts": ["outdoor-relay.js", "openMeteo.js", "httpUtil.js"],
+    "assets": [],
+    "targets": ["node12-win-x64"]
+  }
+}

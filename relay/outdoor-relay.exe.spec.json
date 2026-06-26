@@ -1,0 +1,23 @@
+{
+  "_설명": "Windows 7+ 실외 날씨 중계 exe (pkg node12-win-x64). MES mes-prod-viewer.exe 와 별도.",
+  "buildCommand": "npm run build:relay-exe",
+  "prerequisites": {
+    "os": "Windows x64 (빌드하는 PC, Node 18+ 권장)",
+    "runtimeTarget": "Windows 7 SP1 이상 (119 PC 등, Node 설치 불필요)"
+  },
+  "entryPoint": "./relay/outdoor-relay.js",
+  "includedScripts": ["./relay/outdoor-relay.js", "./relay/openMeteo.js", "./relay/httpUtil.js"],
+  "pkgTarget": "node12-win-x64",
+  "output": {
+    "directory": "./dist",
+    "exePath": "./dist/outdoor-relay.exe"
+  },
+  "deployment": [
+    "npm run build:relay-exe → dist/outdoor-relay.exe + outdoor-relay.env.example + VBS/PS1",
+    "119 PC: outdoor-relay.exe, outdoor-relay.env (Win7), start-outdoor-relay-hidden.vbs",
+    "MES ENV_OUTDOOR_INGEST_KEY = OUTDOOR_INGEST_KEY",
+    "작업 스케줄러: VBS 경로 등록 (콘솔 창 없이 상시 실행)",
+    "Push만: RELAY_HTTP=0 / Pull: RELAY_HTTP=1 + 방화벽 8080",
+    "Open-Meteo: tempC(기온), feelsLikeC(체감), humidityPct, 3일 예보"
+  ]
+}

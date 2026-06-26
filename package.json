@@ -8,7 +8,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "build:exe": "pkg . -t node18-win-x64 --out-path dist"
+    "relay:outdoor": "node relay/outdoor-relay.js",
+    "build:exe": "pkg . -t node18-win-x64 --out-path dist",
+    "build:relay-exe": "pkg relay/outdoor-relay.js --config relay/pkg.json -o dist/outdoor-relay.exe && npm run stage:relay",
+    "stage:relay": "powershell -NoProfile -Command \"Copy-Item relay/start-outdoor-relay-hidden.vbs,relay/start-outdoor-relay-tray.ps1 dist/ -Force; Copy-Item relay/.env.example dist/outdoor-relay.env.example -Force\""
   },
   "engines": {
     "node": ">=18"
@@ -28,7 +31,8 @@
       "lineActivity.js",
       "envStore.js",
       "alarmStore.js",
-      "notifier.js"
+      "notifier.js",
+      "outdoorStore.js"
     ],
     "assets": [
       "public/**/*",

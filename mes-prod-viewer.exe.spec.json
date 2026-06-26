@@ -13,7 +13,8 @@
     "./lineActivity.js",
     "./envStore.js",
     "./alarmStore.js",
-    "./notifier.js"
+    "./notifier.js",
+    "./outdoorStore.js"
   ],
   "includedAssets": [
     "./public/**/*",
@@ -30,7 +31,8 @@
     "접속: http://(서버IP):(PORT) — HOST=0.0.0.0 권장",
     "방화벽 해당 TCP 포트 허용",
     "UI/서버 코드 변경 시 public만 덮어쓰지 말고 npm run build:exe 후 exe 교체",
-    "data/env/ 는 exe 옆에 자동 생성 (JSONL, CSV, calibration.json)"
+    "data/env/ 는 exe 옆에 자동 생성 (JSONL, CSV, calibration.json, outdoor-latest.json)",
+    "실외 날씨: ENV_OUTDOOR_* 설정, 119 PC outdoor-relay.exe 별도 배포 (relay/README.md)"
   ],
   "buildWarnings": [
     "Cannot include ... xdg-open — Linux용 보조파일, Windows 현장 단독 배포는 무시 가능",

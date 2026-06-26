@@ -12,6 +12,7 @@ const express = require('express')
 const mesRepository = require('./mesRepository')
 const { attachLineStatus } = require('./lineActivity')
 const envStore = require('./envStore')
+const outdoorStore = require('./outdoorStore')
 const alarmStore = require('./alarmStore')
 const notifier = require('./notifier')
 
@@ -40,6 +41,12 @@ const ENV_RETENTION_DAYS = Math.max(
   parseInt(process.env.ENV_RETENTION_DAYS || '90', 10) || 90,
 )
 const ENV_SETTINGS_PIN = String(process.env.ENV_SETTINGS_PIN || 'smt1234').trim()
+const ENV_OUTDOOR_INGEST_KEY = String(process.env.ENV_OUTDOOR_INGEST_KEY || '').trim()
+const ENV_OUTDOOR_PULL_URL = String(process.env.ENV_OUTDOOR_PULL_URL || '').trim()
+const ENV_OUTDOOR_PULL_MS = Math.max(
+  60_000,
+  parseInt(process.env.ENV_OUTDOOR_PULL_MS || '600000', 10) || 600_000,
+)
 
 function numEnv(name, def) {
   const v = parseFloat(process.env[name])
@@ -125,6 +132,7 @@ function buildEnvPayload() {
         }
       : null,
     history,
+    outdoor: outdoorStore.getOutdoor(),
   }
 }
 
@@ -147,6 +155,12 @@ function ingestKeyOk(req) {
   if (!ENV_INGEST_KEY) return true
   const key = req.get('X-Device-Key') || req.get('x-device-key') || ''
   return key === ENV_INGEST_KEY
+}
+
+function outdoorKeyOk(req) {
+  if (!ENV_OUTDOOR_INGEST_KEY) return true
+  const key = req.get('X-Outdoor-Key') || req.get('x-outdoor-key') || ''
+  return key === ENV_OUTDOOR_INGEST_KEY
 }
 
 function settingsPinOk(req) {
@@ -192,6 +206,33 @@ app.get('/api/health', (_req, res) => {
     uptimeSec: Math.round(process.uptime()),
     time: new Date().toISOString(),
   })
+})
+
+app.post('/api/env/outdoor', (req, res) => {
+  if (!outdoorKeyOk(req)) {
+    res.status(401).json({ ok: false, error: 'Invalid outdoor key' })
+    return
+  }
+  try {
+    const saved = outdoorStore.saveOutdoor(req.body)
+    console.log(
+      `[env/outdoor] ${saved.location} T=${saved.current.tempC} RH=${saved.current.humidityPct}% ${saved.current.weatherLabel || ''}`,
+    )
+    res.json({ ok: true, outdoor: saved })
+    broadcastEnvSse()
+  } catch (err) {
+    console.error('[api/env/outdoor]', err.message)
+    res.status(400).json({ ok: false, error: err.message })
+  }
+})
+
+app.get('/api/env/outdoor', (_req, res) => {
+  try {
+    const outdoor = outdoorStore.getOutdoor()
+    res.json({ ok: true, outdoor: outdoor || null })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, outdoor: null })
+  }
 })
 
 app.post('/api/env/ingest', (req, res) => {
@@ -568,6 +609,25 @@ setInterval(() => {
   if (envSseClients.length === 0) return
   broadcastEnvSse()
 }, ENV_REFRESH_MS).unref?.()
+
+async function pullOutdoorFromRelay() {
+  if (!ENV_OUTDOOR_PULL_URL || typeof fetch !== 'function') return
+  try {
+    const r = await fetch(ENV_OUTDOOR_PULL_URL, { signal: AbortSignal.timeout(15000) })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const body = await r.json()
+    outdoorStore.saveOutdoor(body)
+    broadcastEnvSse()
+    console.log('[env/outdoor] pull ok', ENV_OUTDOOR_PULL_URL)
+  } catch (e) {
+    console.warn('[env/outdoor] pull failed:', e.message)
+  }
+}
+
+if (ENV_OUTDOOR_PULL_URL) {
+  void pullOutdoorFromRelay()
+  setInterval(() => void pullOutdoorFromRelay(), ENV_OUTDOOR_PULL_MS).unref?.()
+}
 
 /* 센서 단절 watchdog: 마지막 수신 이후 경과로 단절 경보 */
 setInterval(() => {
